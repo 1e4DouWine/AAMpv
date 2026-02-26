@@ -87,76 +87,89 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
         _mpv.ObserveProperty("eof-reached", MpvFormat.Flag, ReplyEofReached);
         _mpv.ObserveProperty("mute", MpvFormat.Flag, ReplyMute);
 
+        // Use wakeup callback instead of polling — event loop sleeps until mpv signals
+        _mpv.InstallWakeupCallback();
+
         _cts = new CancellationTokenSource();
         _eventLoopTask = Task.Run(() => EventLoop(_cts.Token));
     }
 
     private void EventLoop(CancellationToken ct)
     {
+        var signal = _mpv!.WakeupSignal;
         while (!ct.IsCancellationRequested && _mpv != null)
         {
-            var ev = _mpv.WaitEvent(0.5);
-            if (ev == null) continue;
+            // Sleep until mpv signals there are events, or cancellation
+            signal.Wait(ct);
+            signal.Reset();
 
-            switch (ev.Value.EventId)
+            // Drain all pending events (non-blocking, timeout=0)
+            while (_mpv != null)
             {
-                case MpvEventId.Shutdown:
-                    return;
-                case MpvEventId.PropertyChange:
-                    HandlePropertyChange(ev.Value);
+                var ev = _mpv.WaitEvent(0);
+                if (ev == null || ev.Value.EventId == MpvEventId.None)
                     break;
-                case MpvEventId.EndFile:
-                    if (ev.Value.Error < 0)
-                    {
-                        var msg = GetError(ev.Value.Error);
-                        _dispatcher.Post(() =>
-                            ErrorOccurred?.Invoke($"播放失败: {msg}"));
-                    }
-                    break;
+
+                switch (ev.Value.EventId)
+                {
+                    case MpvEventId.Shutdown:
+                        return;
+                    case MpvEventId.PropertyChange:
+                        HandlePropertyChange(ev.Value);
+                        break;
+                    case MpvEventId.EndFile:
+                        if (ev.Value.Error < 0)
+                        {
+                            var msg = GetError(ev.Value.Error);
+                            _dispatcher.Post(() =>
+                                ErrorOccurred?.Invoke($"播放失败: {msg}"));
+                        }
+                        break;
+                }
             }
         }
     }
 
-    private void HandlePropertyChange(MpvEvent ev)
+    private unsafe void HandlePropertyChange(MpvEvent ev)
     {
         if (ev.Data == IntPtr.Zero) return;
-        var prop = Marshal.PtrToStructure<MpvEventProperty>(ev.Data);
+        ref readonly var prop = ref *(MpvEventProperty*)ev.Data;
 
         switch (ev.ReplyUserdata)
         {
             case ReplyTimePos when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<double>(prop.Data);
+                var val = *(double*)prop.Data;
                 _dispatcher.Post(() => PositionChanged?.Invoke(val));
                 break;
             }
             case ReplyDuration when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<double>(prop.Data);
+                var val = *(double*)prop.Data;
                 _dispatcher.Post(() => DurationChanged?.Invoke(val));
                 break;
             }
             case ReplyPause when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<int>(prop.Data) != 0;
+                var val = *(int*)prop.Data != 0;
                 _dispatcher.Post(() => PauseChanged?.Invoke(val));
                 break;
             }
             case ReplyVolume when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<double>(prop.Data);
+                var val = *(double*)prop.Data;
                 _dispatcher.Post(() => VolumeChanged?.Invoke(val));
                 break;
             }
             case ReplyEofReached when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<int>(prop.Data) != 0;
+                var val = *(int*)prop.Data != 0;
                 _dispatcher.Post(() => EofReached?.Invoke(val));
                 break;
             }
             case ReplyMute when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
             {
-                var val = Marshal.PtrToStructure<int>(prop.Data) != 0;
+                var val = *(int*)prop.Data != 0;
                 _dispatcher.Post(() => MuteChanged?.Invoke(val));
                 break;
             }
@@ -205,6 +218,51 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
             _mpv.SetProperty("mute", muted ? "no" : "yes");
         }, "切换静音失败");
 
+    public VideoInfo? GetVideoInfo()
+    {
+        if (_mpv == null || !_mpv.IsInitialized) return null;
+        try
+        {
+            return new VideoInfo(
+                FileName: _mpv.GetPropertyString("filename"),
+                FileFormat: _mpv.GetPropertyString("file-format"),
+                FileSize: TryGetLong("file-size"),
+                VideoWidth: TryGetLong("video-params/dw") ?? TryGetLong("width"),
+                VideoHeight: TryGetLong("video-params/dh") ?? TryGetLong("height"),
+                VideoCodec: _mpv.GetPropertyString("video-codec"),
+                HwDecCurrent: _mpv.GetPropertyString("hwdec-current"),
+                VideoFps: TryGetDouble("estimated-vf-fps") ?? TryGetDouble("container-fps"),
+                VideoBitrate: TryGetDouble("video-bitrate"),
+                PixelFormat: _mpv.GetPropertyString("video-params/pixelformat"),
+                AudioCodec: _mpv.GetPropertyString("audio-codec-name"),
+                AudioSampleRate: TryGetLong("audio-params/samplerate"),
+                AudioChannels: TryGetLong("audio-params/channel-count"),
+                AudioBitrate: TryGetDouble("audio-bitrate")
+            );
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"GetVideoInfo failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private long? TryGetLong(string name)
+    {
+        if (_mpv == null) return null;
+        if (_mpv.TryGetPropertyLong(name, out long val))
+            return val;
+        return null;
+    }
+
+    private double? TryGetDouble(string name)
+    {
+        if (_mpv == null) return null;
+        if (_mpv.TryGetPropertyDouble(name, out double val))
+            return val;
+        return null;
+    }
+
     private void TryMpv(Action action, string context)
     {
         try { action(); }
@@ -225,6 +283,8 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
         _disposed = true;
 
         _cts?.Cancel();
+        // Signal the event loop in case it's waiting on the ManualResetEventSlim
+        _mpv?.WakeupSignal.Set();
         try { _eventLoopTask?.Wait(TimeSpan.FromSeconds(2)); }
         catch (AggregateException) { /* expected on cancellation */ }
 

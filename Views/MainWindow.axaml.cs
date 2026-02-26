@@ -53,6 +53,19 @@ public partial class MainWindow : Window
         ViewModel.SetVolume(e.NewValue);
     }
 
+    // --- Video info ---
+
+    private async void OnShowVideoInfoClick(object? sender, RoutedEventArgs e)
+    {
+        if (_playerService == null) return;
+        var info = _playerService.GetVideoInfo();
+        if (info == null) return;
+
+        var window = new VideoInfoWindow();
+        window.SetVideoInfo(info);
+        await window.ShowDialog(this);
+    }
+
     // --- Keyboard → ViewModel ---
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
