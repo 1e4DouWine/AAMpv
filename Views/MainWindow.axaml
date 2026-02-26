@@ -1,0 +1,131 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AvaloniaAppMPV.ViewModels"
+        xmlns:v="using:AvaloniaAppMPV.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="550"
+        x:Class="AvaloniaAppMPV.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="{Binding Title}"
+        Width="900" Height="600"
+        MinWidth="640" MinHeight="480"
+        KeyDown="OnKeyDown">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Panel>
+        <DockPanel>
+            <!-- Bottom control bar -->
+            <Border DockPanel.Dock="Bottom"
+                    Background="#E0202020"
+                    Padding="12,6">
+                <DockPanel>
+                    <!-- Seek slider row -->
+                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                        <TextBlock DockPanel.Dock="Left"
+                                   Text="{Binding PositionText}"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   MinWidth="45"
+                                   Margin="0,0,8,0"/>
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding DurationText}"
+                                   Foreground="White"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   MinWidth="45"
+                                   Margin="8,0,0,0"/>
+                        <Slider x:Name="SeekSlider"
+                                Minimum="0"
+                                Maximum="{Binding Duration}"
+                                Value="{Binding Position}"
+                                IsEnabled="{Binding HasFile}"
+                                VerticalAlignment="Center"
+                                ValueChanged="OnSeekSliderValueChanged"/>
+                    </DockPanel>
+
+                    <!-- Buttons row -->
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <!-- Left: playback buttons -->
+                        <StackPanel Grid.Column="0"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
+                            <Button Content="&#x1F4C2; 打开文件"
+                                    Command="{Binding OpenFileCommand}"
+                                    MinWidth="90"
+                                    HorizontalContentAlignment="Center"/>
+                            <Button Content="{Binding PlayPauseText}"
+                                    Command="{Binding PlayPauseCommand}"
+                                    IsEnabled="{Binding HasFile}"
+                                    MinWidth="90"
+                                    HorizontalContentAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Center: time display -->
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding TimeText}"
+                                   Foreground="#AAAAAA"
+                                   FontSize="12"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+
+                        <!-- Right: volume control -->
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Spacing="4"
+                                    VerticalAlignment="Center">
+                            <Button Content="{Binding VolumeIcon}"
+                                    Command="{Binding MuteCommand}"
+                                    MinWidth="36"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="4,6"/>
+                            <Slider x:Name="VolumeSlider"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Value="{Binding Volume}"
+                                    Width="100"
+                                    VerticalAlignment="Center"
+                                    ValueChanged="OnVolumeSliderValueChanged"/>
+                        </StackPanel>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
+            <!-- Video display area -->
+            <Border Background="Black">
+                <v:MpvVideoView x:Name="VideoView"/>
+            </Border>
+        </DockPanel>
+
+        <!-- Error banner overlay (top of window) -->
+        <Border Background="#DD2020"
+                Padding="12,8"
+                CornerRadius="0,0,6,6"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Top"
+                IsVisible="{Binding HasError}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right"
+                        Content="✕"
+                        Command="{Binding DismissErrorCommand}"
+                        Background="Transparent"
+                        Foreground="White"
+                        FontSize="14"
+                        Padding="6,2"
+                        VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           Foreground="White"
+                           FontSize="13"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+            </DockPanel>
+        </Border>
+    </Panel>
+
+</Window>
