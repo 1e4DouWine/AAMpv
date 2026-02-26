@@ -80,6 +80,13 @@
                                     Orientation="Horizontal"
                                     Spacing="4"
                                     VerticalAlignment="Center">
+                            <Button Content="ℹ 信息"
+                                    IsEnabled="{Binding HasFile}"
+                                    Click="OnShowVideoInfoClick"
+                                    MinWidth="56"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="4,6"
+                                    Margin="0,0,8,0"/>
                             <Button Content="{Binding VolumeIcon}"
                                     Command="{Binding MuteCommand}"
                                     MinWidth="36"

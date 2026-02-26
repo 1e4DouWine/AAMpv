@@ -29,6 +29,10 @@ public static partial class MpvInterop
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial int mpv_command(IntPtr ctx, IntPtr[] args);
 
+    [LibraryImport(LibMpv, EntryPoint = "mpv_command")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static unsafe partial int mpv_command_ptr(IntPtr ctx, IntPtr* args);
+
     [LibraryImport(LibMpv, EntryPoint = "mpv_command_string", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial int mpv_command_string(IntPtr ctx, string args);
@@ -52,6 +56,10 @@ public static partial class MpvInterop
     [LibraryImport(LibMpv, EntryPoint = "mpv_get_property", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial int mpv_get_property(IntPtr ctx, string name, MpvFormat format, out double data);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_get_property", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial int mpv_get_property(IntPtr ctx, string name, MpvFormat format, out IntPtr data);
 
     [LibraryImport(LibMpv, EntryPoint = "mpv_observe_property", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
@@ -194,6 +202,12 @@ public static partial class MpvInterop
         public MpvRenderParamType Type;
         public IntPtr Data;
     }
+
+    /// <summary>
+    /// Delegate matching mpv_set_wakeup_callback signature: void (*cb)(void *d)
+    /// </summary>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void MpvWakeupCallbackFn(IntPtr d);
 
     /// <summary>
     /// Delegate matching mpv_opengl_init_params.get_proc_address signature.

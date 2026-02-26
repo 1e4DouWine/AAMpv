@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AvaloniaAppMPV.Views.VideoInfoWindow"
+        Title="视频信息"
+        Width="460" Height="420"
+        MinWidth="360" MinHeight="300"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Border Padding="20">
+        <DockPanel>
+            <Button DockPanel.Dock="Bottom"
+                    Content="关闭"
+                    HorizontalAlignment="Center"
+                    MinWidth="80"
+                    Margin="0,12,0,0"
+                    Click="OnCloseClick"/>
+
+            <ScrollViewer>
+                <StackPanel Spacing="2" x:Name="InfoPanel"/>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</Window>

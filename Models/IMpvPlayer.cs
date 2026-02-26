@@ -1,6 +1,27 @@
 using System;
+using System.Collections.Generic;
 
 namespace AvaloniaAppMPV.Models;
+
+/// <summary>
+/// Video metadata retrieved from mpv properties.
+/// </summary>
+public record VideoInfo(
+    string? FileName,
+    string? FileFormat,
+    long? FileSize,
+    long? VideoWidth,
+    long? VideoHeight,
+    string? VideoCodec,
+    string? HwDecCurrent,
+    double? VideoFps,
+    double? VideoBitrate,
+    string? PixelFormat,
+    string? AudioCodec,
+    long? AudioSampleRate,
+    long? AudioChannels,
+    double? AudioBitrate
+);
 
 /// <summary>
 /// Abstraction over mpv playback operations.
@@ -28,4 +49,9 @@ public interface IMpvPlayer
     void SetVolume(double volume);
     void SetMute(bool mute);
     void ToggleMute();
+
+    /// <summary>
+    /// Retrieve current video metadata from mpv.
+    /// </summary>
+    VideoInfo? GetVideoInfo();
 }
