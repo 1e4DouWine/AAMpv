@@ -64,8 +64,14 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs e)
     {
+        // 1. Free the render context FIRST — this stops the update callback
+        //    and releases the OpenGL render context before the mpv core is destroyed.
+        VideoView.CleanupRenderContext();
+
+        // 2. Now safe to destroy the mpv core
         if (_playerService is IDisposable disposable)
             disposable.Dispose();
+
         base.OnClosing(e);
     }
 }

@@ -73,6 +73,32 @@ public static partial class MpvInterop
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial IntPtr mpv_error_string(int error);
 
+    // --- render.h ---
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_create")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial int mpv_render_context_create(out IntPtr res, IntPtr mpv, IntPtr @params);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_render")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial int mpv_render_context_render(IntPtr ctx, IntPtr @params);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_set_update_callback")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial void mpv_render_context_set_update_callback(IntPtr ctx, IntPtr callback, IntPtr callback_ctx);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_update")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial ulong mpv_render_context_update(IntPtr ctx);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_free")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial void mpv_render_context_free(IntPtr ctx);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_render_context_report_swap")]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial void mpv_render_context_report_swap(IntPtr ctx);
+
     // --- Enums ---
 
     public enum MpvFormat
@@ -123,6 +149,63 @@ public static partial class MpvInterop
         public MpvFormat Format;
         public IntPtr Data;
     }
+
+    // --- Render API enums & structs ---
+
+    public enum MpvRenderParamType
+    {
+        Invalid = 0,
+        ApiType = 1,
+        OpenGlInitParams = 2,
+        OpenGlFbo = 3,
+        FlipY = 4,
+        Depth = 5,
+        IccProfile = 6,
+        AmbientLight = 7,
+        X11Display = 8,
+        WlDisplay = 9,
+        AdvancedControl = 10,
+        NextFrameInfo = 11,
+        BlockForTargetTime = 12,
+        SkipRendering = 13,
+    }
+
+    public const ulong MpvRenderUpdateFrame = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MpvOpenGlInitParams
+    {
+        public IntPtr GetProcAddress; // delegate* unmanaged<IntPtr, IntPtr, IntPtr>
+        public IntPtr GetProcAddressCtx;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MpvOpenGlFbo
+    {
+        public int Fbo;
+        public int W;
+        public int H;
+        public int InternalFormat;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MpvRenderParam
+    {
+        public MpvRenderParamType Type;
+        public IntPtr Data;
+    }
+
+    /// <summary>
+    /// Delegate matching mpv_opengl_init_params.get_proc_address signature.
+    /// </summary>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate IntPtr MpvGetProcAddressFn(IntPtr ctx, IntPtr name);
+
+    /// <summary>
+    /// Delegate matching mpv_render_update_fn signature.
+    /// </summary>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void MpvRenderUpdateFn(IntPtr ctx);
 
     // --- Helpers ---
 
