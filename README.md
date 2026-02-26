@@ -1,6 +1,6 @@
 # AvaloniaAppMPV
 
-基于 Avalonia UI 框架和 libmpv 的跨平台视频播放器。
+基于 Avalonia UI 框架和 libmpv 的~~跨平台~~视频播放器。
 
 全部代码由 AI 编写
 
