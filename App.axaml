@@ -1,15 +1,36 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="AvaloniaAppMPV.App"
-             xmlns:local="using:AvaloniaAppMPV"
-             RequestedThemeVariant="Light">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             xmlns:local="using:AvaloniaAppMPV">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
-  
+
     <Application.Styles>
         <FluentTheme />
     </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#D9181818" />
+                    <SolidColorBrush x:Key="PlayerBarBorderBrush" Color="#33FFFFFF" />
+                    <SolidColorBrush x:Key="AccentLightBrush" Color="#60CDFF" />
+                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#99FFFFFF" />
+                    <SolidColorBrush x:Key="ErrorBannerBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="VideoAreaBackground" Color="Black" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#D9F3F3F3" />
+                    <SolidColorBrush x:Key="PlayerBarBorderBrush" Color="#33000000" />
+                    <SolidColorBrush x:Key="AccentLightBrush" Color="#005FB8" />
+                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#99000000" />
+                    <SolidColorBrush x:Key="ErrorBannerBrush" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="VideoAreaBackground" Color="#1A1A1A" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

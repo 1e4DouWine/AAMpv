@@ -1,4 +1,3 @@
-using System;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -36,12 +35,29 @@ public partial class VideoInfoWindow : Window
 
     private void AddSection(string title)
     {
+        var isFirst = InfoPanel.Children.Count == 0;
+
+        // Add divider before the new section (except the first one)
+        if (!isFirst)
+        {
+            InfoPanel.Children.Add(new Border
+            {
+                Height = 1,
+                Opacity = 0.15,
+                Background = new SolidColorBrush(
+                    Avalonia.Application.Current?.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark
+                        ? Colors.White : Colors.Black),
+                Margin = new Avalonia.Thickness(0, 12, 0, 0)
+            });
+        }
+
         InfoPanel.Children.Add(new TextBlock
         {
             Text = title,
             FontSize = 15,
-            FontWeight = FontWeight.Bold,
-            Margin = new Avalonia.Thickness(0, InfoPanel.Children.Count > 0 ? 12 : 0, 0, 4)
+            FontWeight = FontWeight.SemiBold,
+            Margin = new Avalonia.Thickness(0, isFirst ? 0 : 16, 0, 6),
+            Opacity = 0.9
         });
     }
 
@@ -50,13 +66,14 @@ public partial class VideoInfoWindow : Window
         var grid = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("140,*"),
-            Margin = new Avalonia.Thickness(0, 2)
+            Margin = new Avalonia.Thickness(0, 3)
         };
 
         var labelBlock = new TextBlock
         {
             Text = label,
-            Foreground = new SolidColorBrush(Color.Parse("#888888")),
+            Opacity = 0.55,
+            FontSize = 13,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top
         };
         Grid.SetColumn(labelBlock, 0);
@@ -64,6 +81,7 @@ public partial class VideoInfoWindow : Window
         var valueBlock = new TextBlock
         {
             Text = value ?? "N/A",
+            FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top
         };
