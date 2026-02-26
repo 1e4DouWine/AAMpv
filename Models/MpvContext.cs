@@ -17,6 +17,12 @@ public sealed class MpvContext : IDisposable
 
     public bool IsInitialized => _mpvHandle != IntPtr.Zero;
 
+    /// <summary>
+    /// Raw mpv handle for use with mpv_render_context_create.
+    /// Caller must ensure thread safety.
+    /// </summary>
+    public IntPtr Handle => _mpvHandle;
+
     public MpvContext()
     {
         _mpvHandle = mpv_create();

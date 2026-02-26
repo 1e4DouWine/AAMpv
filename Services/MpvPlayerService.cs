@@ -26,6 +26,8 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
     private const ulong ReplyEofReached = 5;
     private const ulong ReplyMute = 6;
 
+    private IntPtr _renderContext;
+
     public event Action<double>? PositionChanged;
     public event Action<double>? DurationChanged;
     public event Action<bool>? PauseChanged;
@@ -36,15 +38,37 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
 
     public bool IsReady => _mpv?.IsInitialized == true;
 
+    /// <summary>
+    /// Raw mpv handle for render context creation.
+    /// </summary>
+    public IntPtr MpvHandle => _mpv?.Handle ?? IntPtr.Zero;
+
     public MpvPlayerService(IDispatcherService dispatcher)
     {
         _dispatcher = dispatcher;
     }
 
     /// <summary>
-    /// Called once the NativeControlHost has a valid window handle.
+    /// Report an error from the render layer.
     /// </summary>
-    public void Initialize(IntPtr windowHandle)
+    public void ReportError(string message)
+    {
+        _dispatcher.Post(() => ErrorOccurred?.Invoke(message));
+    }
+
+    /// <summary>
+    /// Store the render context handle for cleanup coordination.
+    /// </summary>
+    public void SetRenderContext(IntPtr renderContext)
+    {
+        _renderContext = renderContext;
+    }
+
+    /// <summary>
+    /// Initialize mpv core without wid. The render context is created
+    /// separately by MpvVideoView in OnOpenGlInit.
+    /// </summary>
+    public void InitializeCore()
     {
         if (_mpv != null) return;
 
@@ -52,7 +76,8 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
         _mpv.SetOption("hwdec", "auto");
         _mpv.SetOption("keep-open", "yes");
         _mpv.SetOption("idle", "yes");
-        _mpv.SetOption("wid", windowHandle.ToInt64().ToString());
+        // vo=libmpv tells mpv to use the render API instead of creating its own window
+        _mpv.SetOption("vo", "libmpv");
         _mpv.Initialize();
 
         _mpv.ObserveProperty("time-pos", MpvFormat.Double, ReplyTimePos);
@@ -202,6 +227,13 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable
         _cts?.Cancel();
         try { _eventLoopTask?.Wait(TimeSpan.FromSeconds(2)); }
         catch (AggregateException) { /* expected on cancellation */ }
+
+        // Render context is already freed by MpvVideoView.CleanupRenderContext()
+        // which is called before this method. Clear our reference.
+        _renderContext = IntPtr.Zero;
+
+        // Small delay to let any in-flight native callbacks drain
+        Thread.Sleep(50);
 
         _mpv?.Dispose();
         _mpv = null;
