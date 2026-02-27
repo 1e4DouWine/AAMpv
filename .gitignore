@@ -56,3 +56,6 @@ $RECYCLE.BIN/
 *.log
 
 3rdparty/mpv/
+AAMpv-win-x64-SelfContained.zip
+publish
+.github

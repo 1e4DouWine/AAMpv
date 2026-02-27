@@ -51,6 +51,12 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasError;
 
+    [ObservableProperty]
+    private bool _isControlBarVisible = true;
+
+    [ObservableProperty]
+    private double _controlBarOpacity = 1.0;
+
     // --- Icon path data ---
 
     private static readonly Geometry PlayIconData =

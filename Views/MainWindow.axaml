@@ -12,6 +12,7 @@
         Width="900" Height="600"
         MinWidth="640" MinHeight="480"
         KeyDown="OnKeyDown"
+        PointerMoved="OnWindowPointerMoved"
         Background="{DynamicResource VideoAreaBackground}">
 
     <Design.DataContext>
@@ -19,113 +20,142 @@
     </Design.DataContext>
 
     <Panel>
-        <DockPanel>
-            <!-- Bottom control bar -->
-            <Border DockPanel.Dock="Bottom"
-                    Background="{DynamicResource PlayerBarBackgroundBrush}"
+        <!-- Video display area (fills entire window) -->
+        <v:MpvVideoView x:Name="VideoView"/>
+
+        <!-- Floating control bar overlay at bottom -->
+        <Border x:Name="ControlBarRoot"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Center"
+                Width="680"
+                MaxWidth="900"
+                Margin="0,0,0,16"
+                CornerRadius="12"
+                ClipToBounds="True"
+                Opacity="{Binding ControlBarOpacity}"
+                IsHitTestVisible="{Binding IsControlBarVisible}"
+                PointerEntered="OnControlBarPointerEntered"
+                PointerExited="OnControlBarPointerExited">
+
+            <Border.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseInOut"/>
+                </Transitions>
+            </Border.Transitions>
+
+            <!-- Semi-transparent background (video content visible through) -->
+            <Border Background="{DynamicResource PlayerBarBackgroundBrush}"
                     BorderBrush="{DynamicResource PlayerBarBorderBrush}"
-                    BorderThickness="0,1,0,0"
-                    Padding="16,8">
-                <DockPanel>
-                    <!-- Seek slider row -->
-                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
-                        <TextBlock DockPanel.Dock="Left"
-                                   Text="{Binding PositionText}"
-                                   Foreground="{DynamicResource SubtleTextBrush}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"
-                                   MinWidth="45"
-                                   Margin="0,0,10,0"/>
-                        <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding DurationText}"
-                                   Foreground="{DynamicResource SubtleTextBrush}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"
-                                   MinWidth="45"
-                                   Margin="10,0,0,0"/>
-                        <Slider x:Name="SeekSlider"
-                                Minimum="0"
-                                Maximum="{Binding Duration}"
-                                Value="{Binding Position}"
-                                IsEnabled="{Binding HasFile}"
-                                VerticalAlignment="Center"
-                                ValueChanged="OnSeekSliderValueChanged"/>
-                    </DockPanel>
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Padding="20,12,20,14">
 
-                    <!-- Buttons row -->
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                        <!-- Left: playback buttons -->
-                        <StackPanel Grid.Column="0"
-                                    Orientation="Horizontal"
-                                    Spacing="6"
-                                    VerticalAlignment="Center">
-                            <Button Command="{Binding OpenFileCommand}"
-                                    ToolTip.Tip="打开文件"
-                                    MinWidth="40" MinHeight="36"
-                                    Padding="10,6"
-                                    HorizontalContentAlignment="Center">
-                                <PathIcon Data="M5 4C3.89543 4 3 4.89543 3 6V18C3 19.1046 3.89543 20 5 20H19C20.1046 20 21 19.1046 21 18V8C21 6.89543 20.1046 6 19 6H13L11 4H5Z"
-                                          Width="16" Height="16"/>
-                            </Button>
-                            <Button Command="{Binding PlayPauseCommand}"
-                                    IsEnabled="{Binding HasFile}"
-                                    ToolTip.Tip="{Binding PlayPauseText}"
-                                    MinWidth="40" MinHeight="36"
-                                    Padding="10,6"
-                                    HorizontalContentAlignment="Center">
-                                <PathIcon Data="{Binding PlayPauseIcon}"
-                                          Width="16" Height="16"/>
-                            </Button>
-                        </StackPanel>
-
-                        <!-- Center: time display -->
-                        <TextBlock Grid.Column="1"
-                                   Text="{Binding TimeText}"
-                                   Foreground="{DynamicResource SubtleTextBrush}"
-                                   FontSize="12"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-
-                        <!-- Right: info + volume -->
-                        <StackPanel Grid.Column="2"
-                                    Orientation="Horizontal"
-                                    Spacing="4"
-                                    VerticalAlignment="Center">
-                            <Button IsEnabled="{Binding HasFile}"
-                                    Click="OnShowVideoInfoClick"
-                                    ToolTip.Tip="视频信息"
-                                    MinWidth="36" MinHeight="36"
-                                    Padding="8,6"
-                                    Margin="0,0,6,0"
-                                    HorizontalContentAlignment="Center">
-                                <PathIcon Data="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V11H13V17ZM13 9H11V7H13V9Z"
-                                          Width="16" Height="16"/>
-                            </Button>
-                            <Button Command="{Binding MuteCommand}"
-                                    ToolTip.Tip="{Binding MuteTooltip}"
-                                    MinWidth="36" MinHeight="36"
-                                    Padding="8,6"
-                                    HorizontalContentAlignment="Center">
-                                <PathIcon Data="{Binding VolumeIconPath}"
-                                          Width="16" Height="16"/>
-                            </Button>
-                            <Slider x:Name="VolumeSlider"
+                    <DockPanel>
+                        <!-- Seek slider row (top) -->
+                        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                            <TextBlock DockPanel.Dock="Left"
+                                       Text="{Binding PositionText}"
+                                       Foreground="{DynamicResource SubtleTextBrush}"
+                                       FontSize="12"
+                                       FontWeight="Medium"
+                                       VerticalAlignment="Center"
+                                       MinWidth="45"
+                                       Margin="0,0,12,0"/>
+                            <TextBlock DockPanel.Dock="Right"
+                                       Text="{Binding DurationText}"
+                                       Foreground="{DynamicResource SubtleTextBrush}"
+                                       FontSize="12"
+                                       FontWeight="Medium"
+                                       VerticalAlignment="Center"
+                                       MinWidth="45"
+                                       Margin="12,0,0,0"/>
+                            <Slider x:Name="SeekSlider"
                                     Minimum="0"
-                                    Maximum="100"
-                                    Value="{Binding Volume}"
-                                    Width="100"
+                                    Maximum="{Binding Duration}"
+                                    Value="{Binding Position}"
+                                    IsEnabled="{Binding HasFile}"
                                     VerticalAlignment="Center"
-                                    ValueChanged="OnVolumeSliderValueChanged"/>
-                        </StackPanel>
-                    </Grid>
-                </DockPanel>
-            </Border>
+                                    ValueChanged="OnSeekSliderValueChanged"/>
+                        </DockPanel>
 
-            <!-- Video display area -->
-            <Border Background="{DynamicResource VideoAreaBackground}">
-                <v:MpvVideoView x:Name="VideoView"/>
+                        <!-- Buttons row (bottom) -->
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <!-- Left: playback buttons -->
+                            <StackPanel Grid.Column="0"
+                                        Orientation="Horizontal"
+                                        Spacing="4"
+                                        VerticalAlignment="Center">
+                                <Button Command="{Binding OpenFileCommand}"
+                                        ToolTip.Tip="打开文件"
+                                        MinWidth="40" MinHeight="36"
+                                        Padding="10,6"
+                                        Background="Transparent"
+                                        HorizontalContentAlignment="Center">
+                                    <PathIcon Data="M5 4C3.89543 4 3 4.89543 3 6V18C3 19.1046 3.89543 20 5 20H19C20.1046 20 21 19.1046 21 18V8C21 6.89543 20.1046 6 19 6H13L11 4H5Z"
+                                              Width="16" Height="16"
+                                              Foreground="{DynamicResource ControlBarTextBrush}"/>
+                                </Button>
+                                <Button Command="{Binding PlayPauseCommand}"
+                                        IsEnabled="{Binding HasFile}"
+                                        ToolTip.Tip="{Binding PlayPauseText}"
+                                        MinWidth="44" MinHeight="40"
+                                        Padding="12,8"
+                                        Background="Transparent"
+                                        HorizontalContentAlignment="Center">
+                                    <PathIcon Data="{Binding PlayPauseIcon}"
+                                              Width="18" Height="18"
+                                              Foreground="{DynamicResource ControlBarTextBrush}"/>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- Center: time display -->
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding TimeText}"
+                                       Foreground="{DynamicResource SubtleTextBrush}"
+                                       FontSize="12"
+                                       FontWeight="Medium"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+
+                            <!-- Right: info + volume -->
+                            <StackPanel Grid.Column="2"
+                                        Orientation="Horizontal"
+                                        Spacing="2"
+                                        VerticalAlignment="Center">
+                                <Button IsEnabled="{Binding HasFile}"
+                                        Click="OnShowVideoInfoClick"
+                                        ToolTip.Tip="视频信息"
+                                        MinWidth="36" MinHeight="36"
+                                        Padding="8,6"
+                                        Margin="0,0,4,0"
+                                        Background="Transparent"
+                                        HorizontalContentAlignment="Center">
+                                    <PathIcon Data="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V11H13V17ZM13 9H11V7H13V9Z"
+                                              Width="16" Height="16"
+                                              Foreground="{DynamicResource ControlBarTextBrush}"/>
+                                </Button>
+                                <Button Command="{Binding MuteCommand}"
+                                        ToolTip.Tip="{Binding MuteTooltip}"
+                                        MinWidth="36" MinHeight="36"
+                                        Padding="8,6"
+                                        Background="Transparent"
+                                        HorizontalContentAlignment="Center">
+                                    <PathIcon Data="{Binding VolumeIconPath}"
+                                              Width="16" Height="16"
+                                              Foreground="{DynamicResource ControlBarTextBrush}"/>
+                                </Button>
+                                <Slider x:Name="VolumeSlider"
+                                        Minimum="0"
+                                        Maximum="100"
+                                        Value="{Binding Volume}"
+                                        Width="100"
+                                        VerticalAlignment="Center"
+                                        ValueChanged="OnVolumeSliderValueChanged"/>
+                            </StackPanel>
+                        </Grid>
+                    </DockPanel>
             </Border>
-        </DockPanel>
+        </Border>
 
         <!-- Error banner overlay -->
         <Border Background="{DynamicResource ErrorBannerBrush}"
