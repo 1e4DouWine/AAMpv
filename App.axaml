@@ -15,18 +15,20 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#D9181818" />
+                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#B0181818" />
                     <SolidColorBrush x:Key="PlayerBarBorderBrush" Color="#33FFFFFF" />
                     <SolidColorBrush x:Key="AccentLightBrush" Color="#60CDFF" />
-                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#99FFFFFF" />
+                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="ControlBarTextBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="ErrorBannerBrush" Color="#C42B1C" />
                     <SolidColorBrush x:Key="VideoAreaBackground" Color="Black" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
-                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#D9F3F3F3" />
+                    <SolidColorBrush x:Key="PlayerBarBackgroundBrush" Color="#B0F3F3F3" />
                     <SolidColorBrush x:Key="PlayerBarBorderBrush" Color="#33000000" />
                     <SolidColorBrush x:Key="AccentLightBrush" Color="#005FB8" />
-                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#99000000" />
+                    <SolidColorBrush x:Key="SubtleTextBrush" Color="#B3000000" />
+                    <SolidColorBrush x:Key="ControlBarTextBrush" Color="#000000" />
                     <SolidColorBrush x:Key="ErrorBannerBrush" Color="#C42B1C" />
                     <SolidColorBrush x:Key="VideoAreaBackground" Color="#1A1A1A" />
                 </ResourceDictionary>
