@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Threading;
@@ -122,7 +123,7 @@ public class MpvVideoView : OpenGlControlBase
     {
         if (!_initialized || _renderContext == IntPtr.Zero) return;
 
-        var scaling = VisualRoot?.RenderScaling ?? 1.0;
+        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
         var width = (int)(Bounds.Width * scaling);
         var height = (int)(Bounds.Height * scaling);
         if (width <= 0 || height <= 0) return;
