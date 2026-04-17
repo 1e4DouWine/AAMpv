@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore .\AvaloniaAppMPV.csproj
+
+      - name: Download libmpv
+        shell: pwsh
+        run: .\scripts\Download-Mpv.ps1
+
+      - name: Publish win-x64
+        run: dotnet publish .\AvaloniaAppMPV.csproj -c Release -r win-x64 --self-contained false -o .\publish\release
+
+      - name: Zip package
+        run: Compress-Archive -Path .\publish\release\* -DestinationPath .\publish\AvaloniaAppMPV-win-x64.zip -Force
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $asset = ".\publish\AvaloniaAppMPV-win-x64.zip"
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber
+          } else {
+            gh release create $tag $asset --generate-notes
+          }
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
