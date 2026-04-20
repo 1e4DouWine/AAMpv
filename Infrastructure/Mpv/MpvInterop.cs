@@ -1,8 +1,12 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace AvaloniaAppMPV.Models;
+namespace AvaloniaAppMPV.Infrastructure.Mpv;
 
+/// <summary>
+/// libmpv 原生 API 声明和配套结构体。
+/// 这里尽量保持“薄封装”，方便对照 mpv 官方头文件排查问题。
+/// </summary>
 public static partial class MpvInterop
 {
     private const string LibMpv = "libmpv-2";
@@ -204,19 +208,19 @@ public static partial class MpvInterop
     }
 
     /// <summary>
-    /// Delegate matching mpv_set_wakeup_callback signature: void (*cb)(void *d)
+    /// 对应 mpv_set_wakeup_callback 的回调签名：void (*cb)(void* d)
     /// </summary>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void MpvWakeupCallbackFn(IntPtr d);
 
     /// <summary>
-    /// Delegate matching mpv_opengl_init_params.get_proc_address signature.
+    /// 对应 mpv_opengl_init_params.get_proc_address 的回调签名。
     /// </summary>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate IntPtr MpvGetProcAddressFn(IntPtr ctx, IntPtr name);
 
     /// <summary>
-    /// Delegate matching mpv_render_update_fn signature.
+    /// 对应 mpv_render_update_fn 的回调签名。
     /// </summary>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void MpvRenderUpdateFn(IntPtr ctx);

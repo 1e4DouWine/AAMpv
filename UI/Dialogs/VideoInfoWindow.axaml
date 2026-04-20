@@ -1,9 +1,11 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        x:Class="AvaloniaAppMPV.Views.VideoInfoWindow"
+        x:Class="AvaloniaAppMPV.UI.Dialogs.VideoInfoWindow"
         Title="视频信息"
-        Width="480" Height="450"
-        MinWidth="380" MinHeight="320"
+        Width="480"
+        Height="450"
+        MinWidth="380"
+        MinHeight="320"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
 
@@ -18,7 +20,7 @@
                     Click="OnCloseClick"/>
 
             <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Spacing="4" x:Name="InfoPanel"/>
+                <StackPanel x:Name="InfoPanel" Spacing="4"/>
             </ScrollViewer>
         </DockPanel>
     </Border>

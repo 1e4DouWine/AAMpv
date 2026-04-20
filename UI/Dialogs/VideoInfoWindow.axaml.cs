@@ -1,10 +1,13 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Media;
-using AvaloniaAppMPV.Models;
+using AvaloniaAppMPV.Core.Playback;
 
-namespace AvaloniaAppMPV.Views;
+namespace AvaloniaAppMPV.UI.Dialogs;
 
+/// <summary>
+/// 展示当前媒体详细信息的弹窗。
+/// </summary>
 public partial class VideoInfoWindow : Window
 {
     public VideoInfoWindow()
@@ -37,7 +40,6 @@ public partial class VideoInfoWindow : Window
     {
         var isFirst = InfoPanel.Children.Count == 0;
 
-        // Add divider before the new section (except the first one)
         if (!isFirst)
         {
             InfoPanel.Children.Add(new Border
@@ -94,21 +96,33 @@ public partial class VideoInfoWindow : Window
 
     private static string? FormatFileSize(long? bytes)
     {
-        if (bytes == null) return null;
+        if (bytes == null)
+            return null;
+
         double b = bytes.Value;
-        if (b < 1024) return $"{b:F0} B";
+        if (b < 1024)
+            return $"{b:F0} B";
+
         b /= 1024;
-        if (b < 1024) return $"{b:F1} KB";
+        if (b < 1024)
+            return $"{b:F1} KB";
+
         b /= 1024;
-        if (b < 1024) return $"{b:F2} MB";
+        if (b < 1024)
+            return $"{b:F2} MB";
+
         b /= 1024;
         return $"{b:F2} GB";
     }
 
     private static string? FormatBitrate(double? bps)
     {
-        if (bps == null) return null;
-        if (bps <= 0) return "0 kbps";
+        if (bps == null)
+            return null;
+
+        if (bps <= 0)
+            return "0 kbps";
+
         double kbps = bps.Value / 1000.0;
         return kbps >= 1000 ? $"{kbps / 1000.0:F2} Mbps" : $"{kbps:F0} kbps";
     }

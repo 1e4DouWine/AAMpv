@@ -2,10 +2,10 @@ using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using AvaloniaAppMPV.Models;
-using AvaloniaAppMPV.Services;
-using AvaloniaAppMPV.ViewModels;
-using AvaloniaAppMPV.Views;
+using AvaloniaAppMPV.Core.Playback;
+using AvaloniaAppMPV.Infrastructure.Avalonia;
+using AvaloniaAppMPV.Infrastructure.Mpv;
+using AvaloniaAppMPV.UI.Main;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AvaloniaAppMPV;
@@ -25,13 +25,15 @@ public partial class App : Application
         {
             var services = new ServiceCollection();
 
-            // Services
+            // 基础设施服务
             services.AddSingleton<IDispatcherService, AvaloniaDispatcherService>();
             services.AddSingleton<IDialogService, AvaloniaDialogService>();
+
+            // 播放核心
             services.AddSingleton<MpvPlayerService>();
             services.AddSingleton<IMpvPlayer>(sp => sp.GetRequiredService<MpvPlayerService>());
 
-            // ViewModels
+            // 主界面
             services.AddSingleton<MainWindowViewModel>();
 
             Services = services.BuildServiceProvider();

@@ -7,31 +7,22 @@
 ## 功能特性
 
 - 基于 MPV 的高性能视频播放
-
 - MVVM 架构 (CommunityToolkit.Mvvm)
-
 - 依赖注入 (Microsoft.Extensions.DependencyInjection)
-
 - OpenGL 渲染链路，直接将 mpv 输出绘制到 Avalonia 控件中
 
 ## 技术栈
 
 - .NET 10.0
-
 - Avalonia UI 12.0.1
-
 - libmpv
-
 - CommunityToolkit.Mvvm 8.4.2
-
 - Microsoft.Extensions.DependencyInjection 10.0.6
 
 ## 运行环境
 
 - Windows x64
-
 - .NET 10 SDK
-
 - `3rdparty/mpv/libmpv-2.dll`
 
 仓库当前未包含 `libmpv-2.dll`。更新到脚本里指定的版本，可以执行：
@@ -42,14 +33,21 @@
 
 ## 项目结构
 
-```
+```text
 AvaloniaAppMPV/
-├── Models/              # 数据模型和 MPV 互操作
-├── Views/               # Avalonia 视图
-├── ViewModels/          # 视图模型
-├── Services/            # 服务层
-├── Assets/              # 资源文件
-└── 3rdparty/mpv/        # libmpv 库文件
+├── Core/
+│   └── Playback/           # 播放核心契约与媒体信息模型
+├── Infrastructure/
+│   ├── Avalonia/           # Avalonia 相关基础设施实现
+│   └── Mpv/                # libmpv 互操作与播放服务
+├── UI/
+│   ├── Common/             # UI 公共基类
+│   ├── Controls/           # 自定义控件
+│   ├── Dialogs/            # 弹窗视图
+│   └── Main/               # 主窗口视图与 ViewModel
+├── Assets/                 # 资源文件
+├── scripts/                # 辅助脚本
+└── 3rdparty/mpv/           # libmpv 库文件（本地下载）
 ```
 
 ## 构建与运行
@@ -69,13 +67,9 @@ dotnet publish .\AvaloniaAppMPV.csproj -c Release -r win-x64 --self-contained fa
 ## 依赖
 
 - [Avalonia UI](https://avaloniaui.net/) - 跨平台 XAML 框架
-
 - [MPV](https://mpv.io/) - 免费开源媒体播放器
-
 - [CommunityToolkit.Mvvm](https://learn.microsoft.com/dotnet/communitytoolkit/mvvm/) - MVVM 工具包
-
 - [Microsoft.Extensions.DependencyInjection](https://learn.microsoft.com/dotnet/core/extensions/dependency-injection) - 依赖注入容器
-
 
 ## 许可证
 

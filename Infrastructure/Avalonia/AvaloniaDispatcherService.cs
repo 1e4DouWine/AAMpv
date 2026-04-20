@@ -1,8 +1,11 @@
 using System;
 using Avalonia.Threading;
 
-namespace AvaloniaAppMPV.Services;
+namespace AvaloniaAppMPV.Infrastructure.Avalonia;
 
+/// <summary>
+/// Avalonia 对应的 UI 调度实现。
+/// </summary>
 public class AvaloniaDispatcherService : IDispatcherService
 {
     public void Post(Action action) => Dispatcher.UIThread.Post(action);

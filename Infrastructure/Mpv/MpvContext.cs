@@ -1,34 +1,35 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
-using static AvaloniaAppMPV.Models.MpvInterop;
+using static AvaloniaAppMPV.Infrastructure.Mpv.MpvInterop;
 
-namespace AvaloniaAppMPV.Models;
+namespace AvaloniaAppMPV.Infrastructure.Mpv;
 
 /// <summary>
-/// Thread-safe managed wrapper around a native mpv handle.
-/// All public methods are guarded by a lock and a disposed check.
+/// 对 mpv 原生句柄的线程安全托管封装。
+/// 对外公开的方法都带有锁和释放检查，避免 UI 线程和事件线程同时踩到原生资源。
 /// </summary>
 public sealed class MpvContext : IDisposable
 {
     private IntPtr _mpvHandle;
     private readonly object _lock = new();
     private volatile bool _disposed;
+    private bool _initialized;
 
-    // Wakeup callback support: signal the event loop when mpv has events
+    // mpv 有新事件时通过 wakeup callback 唤醒事件循环，而不是持续轮询。
     private readonly ManualResetEventSlim _wakeupSignal = new(false);
-    private MpvWakeupCallbackFn? _wakeupCallbackDelegate; // prevent GC collection
+    private MpvWakeupCallbackFn? _wakeupCallbackDelegate;
 
-    public bool IsInitialized => _mpvHandle != IntPtr.Zero;
+    public bool IsInitialized => _initialized;
 
     /// <summary>
-    /// Raw mpv handle for use with mpv_render_context_create.
-    /// Caller must ensure thread safety.
+    /// 暴露原生 mpv 句柄，供 render context 创建时使用。
+    /// 调用方需要自行保证线程安全。
     /// </summary>
     public IntPtr Handle => _mpvHandle;
 
     /// <summary>
-    /// Signal used by the event loop to wait for mpv wakeup notifications.
+    /// 事件循环等待的信号量。
     /// </summary>
     public ManualResetEventSlim WakeupSignal => _wakeupSignal;
 
@@ -44,7 +45,11 @@ public sealed class MpvContext : IDisposable
         lock (_lock)
         {
             ThrowIfDisposed();
+            if (_initialized)
+                return;
+
             Check(mpv_initialize(_mpvHandle));
+            _initialized = true;
         }
     }
 
@@ -71,7 +76,7 @@ public sealed class MpvContext : IDisposable
         lock (_lock)
         {
             ThrowIfDisposed();
-            mpv_get_property(_mpvHandle, name, MpvFormat.Flag, out int val);
+            Check(mpv_get_property(_mpvHandle, name, MpvFormat.Flag, out int val));
             return val != 0;
         }
     }
@@ -81,7 +86,7 @@ public sealed class MpvContext : IDisposable
         lock (_lock)
         {
             ThrowIfDisposed();
-            mpv_get_property(_mpvHandle, name, MpvFormat.Double, out double val);
+            Check(mpv_get_property(_mpvHandle, name, MpvFormat.Double, out double val));
             return val;
         }
     }
@@ -101,7 +106,7 @@ public sealed class MpvContext : IDisposable
         lock (_lock)
         {
             ThrowIfDisposed();
-            mpv_get_property(_mpvHandle, name, MpvFormat.Int64, out long val);
+            Check(mpv_get_property(_mpvHandle, name, MpvFormat.Int64, out long val));
             return val;
         }
     }
@@ -122,7 +127,9 @@ public sealed class MpvContext : IDisposable
         {
             ThrowIfDisposed();
             int err = mpv_get_property(_mpvHandle, name, MpvFormat.String, out IntPtr ptr);
-            if (err < 0 || ptr == IntPtr.Zero) return null;
+            if (err < 0 || ptr == IntPtr.Zero)
+                return null;
+
             try
             {
                 return Marshal.PtrToStringUTF8(ptr);
@@ -139,17 +146,20 @@ public sealed class MpvContext : IDisposable
         lock (_lock)
         {
             ThrowIfDisposed();
-            // stackalloc avoids heap allocation for the pointer array
+
             const int StackLimit = 16;
             int count = args.Length + 1;
             Span<IntPtr> span = count <= StackLimit
                 ? stackalloc IntPtr[count]
                 : new IntPtr[count];
+
             try
             {
                 for (int i = 0; i < args.Length; i++)
                     span[i] = AllocUtf8(args[i]);
+
                 span[args.Length] = IntPtr.Zero;
+
                 fixed (IntPtr* ptr = span)
                 {
                     Check(mpv_command_ptr(_mpvHandle, ptr));
@@ -158,8 +168,10 @@ public sealed class MpvContext : IDisposable
             finally
             {
                 for (int i = 0; i < args.Length; i++)
+                {
                     if (span[i] != IntPtr.Zero)
                         FreeUtf8(span[i]);
+                }
             }
         }
     }
@@ -183,8 +195,7 @@ public sealed class MpvContext : IDisposable
     }
 
     /// <summary>
-    /// Install the mpv wakeup callback so the event loop can be signal-driven
-    /// instead of polling. Must be called after Initialize().
+    /// 安装 mpv 的 wakeup callback，让事件循环在有事件时再被唤醒。
     /// </summary>
     public void InstallWakeupCallback()
     {
@@ -194,8 +205,8 @@ public sealed class MpvContext : IDisposable
             _wakeupCallbackDelegate = OnWakeup;
             var fnPtr = Marshal.GetFunctionPointerForDelegate(_wakeupCallbackDelegate);
             mpv_set_wakeup_callback(_mpvHandle, fnPtr, IntPtr.Zero);
-            // Set signal so the event loop immediately drains any events
-            // that were queued before the callback was installed
+
+            // 安装回调前如果已经有事件排队，主动 set 一次，避免首批事件被漏掉。
             _wakeupSignal.Set();
         }
     }
@@ -206,15 +217,18 @@ public sealed class MpvContext : IDisposable
     }
 
     /// <summary>
-    /// Waits for the next mpv event using unsafe pointer dereference instead of
-    /// Marshal.PtrToStructure. This call is NOT locked because mpv_wait_event
-    /// is thread-safe per the mpv documentation.
+    /// 读取下一条 mpv 事件。
+    /// 这个调用本身是线程安全的，因此不再额外加锁。
     /// </summary>
     public unsafe MpvEvent? WaitEvent(double timeout = 0)
     {
-        if (_disposed) return null;
+        if (_disposed || !_initialized || _mpvHandle == IntPtr.Zero)
+            return null;
+
         var ptr = mpv_wait_event(_mpvHandle, timeout);
-        if (ptr == IntPtr.Zero) return null;
+        if (ptr == IntPtr.Zero)
+            return null;
+
         return *(MpvEvent*)ptr;
     }
 
@@ -231,15 +245,19 @@ public sealed class MpvContext : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+            return;
 
         ManualResetEventSlim? signalToDispose = null;
         lock (_lock)
         {
-            if (_disposed) return;
-            _disposed = true;
+            if (_disposed)
+                return;
 
-            // Signal the event loop to exit if it's waiting
+            _disposed = true;
+            _initialized = false;
+
+            // 如果事件线程正在等待，先唤醒它，让它有机会退出。
             _wakeupSignal.Set();
 
             if (_mpvHandle != IntPtr.Zero)
@@ -250,11 +268,15 @@ public sealed class MpvContext : IDisposable
 
             signalToDispose = _wakeupSignal;
         }
-        // Dispose outside the lock to avoid potential race with event loop Wait()
+
+        // 在锁外释放等待句柄，避免和事件线程的 Wait 形成竞争。
         signalToDispose?.Dispose();
     }
 }
 
+/// <summary>
+/// 对 mpv 错误码做一层异常封装，便于上层统一处理。
+/// </summary>
 public class MpvException : Exception
 {
     public int ErrorCode { get; }
