@@ -1,10 +1,9 @@
-using System;
 using System.Threading.Tasks;
 
-namespace AvaloniaAppMPV.Services;
+namespace AvaloniaAppMPV.Infrastructure.Avalonia;
 
 /// <summary>
-/// Abstracts file picker dialogs away from the ViewModel.
+/// 文件选择等对话框能力抽象。
 /// </summary>
 public interface IDialogService
 {

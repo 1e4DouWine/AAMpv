@@ -1,18 +1,21 @@
-using System;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 
-namespace AvaloniaAppMPV.Services;
+namespace AvaloniaAppMPV.Infrastructure.Avalonia;
 
+/// <summary>
+/// 基于 Avalonia StorageProvider 的文件选择实现。
+/// </summary>
 public class AvaloniaDialogService : IDialogService
 {
     public async Task<string?> OpenVideoFileAsync()
     {
         var topLevel = GetTopLevel();
-        if (topLevel == null) return null;
+        if (topLevel == null)
+            return null;
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -40,6 +43,7 @@ public class AvaloniaDialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             return desktop.MainWindow;
+
         return null;
     }
 }
