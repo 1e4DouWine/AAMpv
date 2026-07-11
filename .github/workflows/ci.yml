@@ -7,12 +7,13 @@ on:
       - main
 
 jobs:
-  build-windows:
+  build:
+    name: Build
     runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
@@ -22,12 +23,32 @@ jobs:
       - name: Restore
         run: dotnet restore .\AvaloniaAppMPV.csproj
 
+      - name: Build
+        run: dotnet build .\AvaloniaAppMPV.csproj -c Release --no-restore
+
+  package-windows:
+    name: Package win-x64
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore win-x64
+        run: dotnet restore .\AvaloniaAppMPV.csproj -r win-x64
+
       - name: Download libmpv
         shell: pwsh
         run: .\scripts\Download-Mpv.ps1
 
       - name: Publish win-x64
-        run: dotnet publish .\AvaloniaAppMPV.csproj -c Release -r win-x64 --self-contained false -o .\publish\win-x64
+        run: dotnet publish .\AvaloniaAppMPV.csproj -c Release -r win-x64 --self-contained false --no-restore -o .\publish\win-x64
 
       - name: Prepare package folder
         shell: pwsh
