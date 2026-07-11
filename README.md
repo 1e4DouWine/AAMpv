@@ -25,7 +25,7 @@
 - .NET 10 SDK
 - `3rdparty/mpv/libmpv-2.dll`
 
-仓库包含可直接使用的 `libmpv-2.dll`。如需重新下载 CI 使用的版本，请先确保 `7z` 命令可用，然后执行：
+仓库不提交 `libmpv-2.dll`；缺少它时仍可编译托管代码，但本地运行或发布前必须先准备该文件。要下载 CI 使用的版本，请先确保 `7z` 命令可用，然后执行：
 
 ```powershell
 .\scripts\Download-Mpv.ps1

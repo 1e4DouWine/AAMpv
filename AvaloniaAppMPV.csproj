@@ -24,7 +24,8 @@
 
     <!-- Copy libmpv native DLL to output -->
     <ItemGroup>
-        <None Include="3rdparty\mpv\libmpv-2.dll">
+        <None Include="3rdparty\mpv\libmpv-2.dll"
+              Condition="Exists('$(MSBuildProjectDirectory)\3rdparty\mpv\libmpv-2.dll')">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
             <Link>libmpv-2.dll</Link>
         </None>
