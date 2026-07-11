@@ -1,6 +1,6 @@
 param(
-    [string]$ReleaseTag = "20260417",
-    [string]$AssetName = "mpv-dev-x86_64-20260417-git-c865008.7z",
+    [string]$ReleaseTag = "2026-07-10-e5486b96d7",
+    [string]$AssetName = "mpv-dev-x86_64-v3-20260710-git-e5486b96d7.7z",
     [string]$DestinationPath = "3rdparty/mpv/libmpv-2.dll"
 )
 
@@ -26,7 +26,7 @@ New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
 $archivePath = Join-Path $tempRoot $AssetName
 $extractPath = Join-Path $tempRoot "extract"
-$downloadUrl = "https://github.com/shinchiro/mpv-winbuild-cmake/releases/download/$ReleaseTag/$AssetName"
+$downloadUrl = "https://github.com/zhongfly/mpv-winbuild/releases/download/$ReleaseTag/$AssetName"
 
 Write-Host "Downloading libmpv package from $downloadUrl"
 Invoke-WebRequest -Uri $downloadUrl -OutFile $archivePath
