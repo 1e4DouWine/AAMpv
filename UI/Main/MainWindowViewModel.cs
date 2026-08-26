@@ -32,6 +32,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private DateTime _lastSeekTime = DateTime.MinValue;
     private int _lastDisplayedPositionSecond = -1;
     private int _errorVersion;
+    private bool _endHandled;
     private const double SeekThrottleMs = 100;
 
     // --- 可绑定状态 ---
@@ -93,32 +94,43 @@ public partial class MainWindowViewModel : ViewModelBase
         Speed = settingsStore.Document.Player.DefaultSpeed;
 
         _player.FileLoaded += OnPlayerFileLoaded;
-        _player.PositionChanged += OnPlayerPositionChanged;
-        _player.DurationChanged += dur => Duration = dur;
-        _player.PauseChanged += paused => IsPaused = paused;
-        _player.VolumeChanged += vol => Volume = vol;
-        _player.MuteChanged += muted => IsMuted = muted;
-        _player.EofReached += eof =>
-        {
-            if (!eof)
-                return;
-            IsPaused = true;
-            Position = 0;
-            SaveCurrentPosition();
-        };
+        _player.SnapshotChanged += OnPlayerSnapshot;
         _player.ErrorOccurred += OnPlayerError;
-        _player.PlaybackStateChanged += state => PlaybackState = state;
-        _player.SpeedChanged += speed => Speed = speed;
-        _player.HardwareDecodeChanged += value => HardwareDecode = value;
         _player.WarningOccurred += OnPlayerWarning;
     }
 
-    private void OnPlayerPositionChanged(double pos)
+    private void OnPlayerSnapshot(PlaybackSnapshot snapshot)
     {
+        PlaybackState = snapshot.State;
+        IsPaused = snapshot.IsPaused;
+        Duration = snapshot.Duration;
+        Volume = snapshot.Volume;
+        IsMuted = snapshot.IsMuted;
+        Speed = snapshot.Speed;
+        HardwareDecode = snapshot.HardwareDecode;
+
         if (!_isSeeking)
-            Position = pos;
-        if (_currentPath != null && _settingsStore.Document.Player.RememberPlaybackPosition)
-            _settingsStore.UpdatePosition(_currentPath, pos);
+            Position = snapshot.Position;
+
+        if (snapshot.State != PlaybackState.Ended)
+            _endHandled = false;
+        else
+        {
+            IsPaused = true;
+            Position = 0;
+            if (!_endHandled)
+            {
+                _endHandled = true;
+                SaveCurrentPosition();
+            }
+        }
+
+        if (_currentPath != null &&
+            string.Equals(_currentPath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase) &&
+            _settingsStore.Document.Player.RememberPlaybackPosition)
+        {
+            _settingsStore.UpdatePosition(_currentPath, Position);
+        }
     }
 
     private void OnPlayerFileLoaded(string? fileName)

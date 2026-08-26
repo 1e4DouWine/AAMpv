@@ -12,31 +12,31 @@ namespace AvaloniaAppMPV.UI.Controls;
 /// </summary>
 public class MpvVideoView : OpenGlControlBase
 {
-    private MpvPlayerService? _playerService;
+    private IMpvRenderHost? _renderHost;
     private IMpvRenderBackend? _renderBackend;
 
-    public void AttachPlayerService(MpvPlayerService playerService) => _playerService = playerService;
+    public void AttachRenderHost(IMpvRenderHost renderHost) => _renderHost = renderHost;
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
-        if (_playerService == null || _renderBackend?.IsInitialized == true)
+        if (_renderHost == null || _renderBackend?.IsInitialized == true)
             return;
 
         try
         {
-            _playerService.InitializeCore();
-            if (_playerService.RenderBackend is RenderBackendKind.Direct3D11 or RenderBackendKind.Vulkan)
-                _playerService.ReportError($"渲染后端 {_playerService.RenderBackend} 尚未实现，已回退到 OpenGL。");
-            _renderBackend = CreateBackend(_playerService.RenderBackend);
+            _renderHost.InitializeCore();
+            if (_renderHost.RenderBackend is RenderBackendKind.Direct3D11 or RenderBackendKind.Vulkan)
+                _renderHost.ReportError($"渲染后端 {_renderHost.RenderBackend} 尚未实现，已回退到 OpenGL。");
+            _renderBackend = CreateBackend(_renderHost.RenderBackend);
             _renderBackend.Initialize(
                 gl,
-                _playerService.MpvHandle,
+                _renderHost.MpvHandle,
                 RequestNextFrameRendering,
-                _playerService.ReportError);
+                _renderHost.ReportError);
         }
         catch (Exception ex)
         {
-            _playerService.ReportError($"初始化视频渲染失败: {ex.Message}");
+            _renderHost?.ReportError($"初始化视频渲染失败: {ex.Message}");
             CleanupRenderContext();
         }
     }

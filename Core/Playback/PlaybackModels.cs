@@ -36,6 +36,31 @@ public enum HardwareDecodeMode
     Dxva2Copy,
 }
 
+public sealed record PlaybackSnapshot(
+    PlaybackState State,
+    string? FilePath,
+    double Position,
+    double Duration,
+    bool IsPaused,
+    double Volume,
+    bool IsMuted,
+    double Speed,
+    string? HardwareDecode,
+    RenderBackendKind RenderBackend)
+{
+    public static PlaybackSnapshot Empty { get; } = new(
+        PlaybackState.Unloaded,
+        null,
+        0,
+        0,
+        true,
+        100,
+        false,
+        1.0,
+        null,
+        RenderBackendKind.OpenGL);
+}
+
 public sealed class MpvPlayerSettings
 {
     public HardwareDecodeMode HardwareDecode { get; set; } = HardwareDecodeMode.Auto;

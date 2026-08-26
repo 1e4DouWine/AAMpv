@@ -50,7 +50,7 @@ public partial class MainWindow : Window
     public void AttachPlayerService(MpvPlayerService playerService)
     {
         _playerService = playerService;
-        VideoView.AttachPlayerService(playerService);
+        VideoView.AttachRenderHost(playerService);
     }
 
     // --- 控制条自动隐藏 ---
