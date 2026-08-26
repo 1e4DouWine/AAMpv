@@ -453,7 +453,8 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
         PlaybackSnapshot snapshot;
         lock (_stateLock)
         {
-            _snapshot = update(_snapshot);
+            var nextSnapshot = update(_snapshot);
+            _snapshot = nextSnapshot with { Revision = _snapshot.Revision + 1 };
             snapshot = _snapshot;
         }
 

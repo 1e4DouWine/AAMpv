@@ -33,6 +33,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private int _lastDisplayedPositionSecond = -1;
     private int _errorVersion;
     private bool _endHandled;
+    private long _lastSnapshotRevision = -1;
+    private string? _pendingFilePath;
     private const double SeekThrottleMs = 100;
 
     // --- 可绑定状态 ---
@@ -101,6 +103,18 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void OnPlayerSnapshot(PlaybackSnapshot snapshot)
     {
+        if (_pendingFilePath != null)
+        {
+            if (!string.Equals(_pendingFilePath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _pendingFilePath = null;
+        }
+
+        if (snapshot.Revision < _lastSnapshotRevision)
+            return;
+
+        _lastSnapshotRevision = snapshot.Revision;
         PlaybackState = snapshot.State;
         IsPaused = snapshot.IsPaused;
         Duration = snapshot.Duration;
@@ -140,6 +154,7 @@ public partial class MainWindowViewModel : ViewModelBase
             ? DefaultTitle
             : $"{Path.GetFileName(fileName)} - {DefaultTitle}";
 
+        _pendingFilePath = null;
         _currentPath = fileName;
         if (!string.IsNullOrWhiteSpace(fileName))
             _settingsStore.AddRecentFile(fileName);
@@ -157,8 +172,20 @@ public partial class MainWindowViewModel : ViewModelBase
         _player.Play();
     }
 
-    private void OnPlayerError(string message)
+    private void OnPlayerError(string message) => ShowMessage(message, true);
+
+    private void OnPlayerWarning(string message) => ShowMessage(message, false);
+
+    private void ShowMessage(string message, bool isPlaybackError)
     {
+        if (isPlaybackError && _pendingFilePath != null)
+        {
+            _pendingFilePath = null;
+            HasFile = false;
+            IsPaused = true;
+            PlaybackState = PlaybackState.Error;
+        }
+
         var errorVersion = Interlocked.Increment(ref _errorVersion);
         ErrorMessage = message;
         HasError = true;
@@ -173,8 +200,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }, TimeSpan.FromSeconds(5));
     }
 
-    private void OnPlayerWarning(string message) => OnPlayerError(message);
-
     [RelayCommand]
     private async Task OpenFile()
     {
@@ -184,12 +209,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         SaveCurrentPosition();
         ClearError();
-        _playRequestedAfterLoad = true;
-        HasFile = false;
+        PrepareForNewFile(path);
         _player.LoadFile(path);
-        Position = 0;
-        Duration = 0;
-        Title = DefaultTitle;
     }
 
     [RelayCommand]
@@ -372,12 +393,21 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         SaveCurrentPosition();
         ClearError();
+        PrepareForNewFile(path);
+        _player.LoadFile(path);
+    }
+
+    private void PrepareForNewFile(string path)
+    {
+        _pendingFilePath = Path.GetFullPath(path);
         _playRequestedAfterLoad = true;
         HasFile = false;
+        IsPaused = true;
+        PlaybackState = PlaybackState.Loading;
+        _endHandled = false;
         Position = 0;
         Duration = 0;
         Title = DefaultTitle;
-        _player.LoadFile(path);
     }
 
     private void SetSpeed(double speed)

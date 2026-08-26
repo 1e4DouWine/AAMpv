@@ -48,6 +48,11 @@ public sealed record PlaybackSnapshot(
     string? HardwareDecode,
     RenderBackendKind RenderBackend)
 {
+    /// <summary>
+    /// 每次状态更新递增，用于丢弃跨线程调度后晚到的旧快照。
+    /// </summary>
+    public long Revision { get; init; }
+
     public static PlaybackSnapshot Empty { get; } = new(
         PlaybackState.Unloaded,
         null,
