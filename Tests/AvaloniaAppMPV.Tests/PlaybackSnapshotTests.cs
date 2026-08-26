@@ -62,6 +62,12 @@ public sealed class PlaybackSnapshotTests
         Assert.True(viewModel.IsPaused);
         Assert.Equal(PlaybackState.Loading, viewModel.PlaybackState);
         Assert.Equal("new-video.mp4", player.LastLoadedPath);
+
+        player.EmitFileLoaded(Path.GetFullPath("new-video.mp4"));
+
+        Assert.True(viewModel.HasFile);
+        Assert.False(viewModel.IsPaused);
+        Assert.Equal(PlaybackState.Playing, viewModel.PlaybackState);
     }
 
     private sealed class InlineDispatcher : IDispatcherService
@@ -94,7 +100,12 @@ public sealed class PlaybackSnapshotTests
 
         public void Configure(MpvPlayerSettings settings) { }
         public void LoadFile(string path) => LastLoadedPath = path;
-        public void Play() { }
+        public void Play() => EmitSnapshot(Snapshot with
+        {
+            Revision = Snapshot.Revision + 1,
+            State = PlaybackState.Playing,
+            IsPaused = false,
+        });
         public void Pause() { }
         public void TogglePause() { }
         public void Seek(double positionSeconds) { }
@@ -112,6 +123,18 @@ public sealed class PlaybackSnapshotTests
         {
             Snapshot = snapshot;
             SnapshotChanged?.Invoke(snapshot);
+        }
+
+        public void EmitFileLoaded(string path)
+        {
+            EmitSnapshot(Snapshot with
+            {
+                Revision = Snapshot.Revision + 1,
+                FilePath = path,
+                State = PlaybackState.Paused,
+                IsPaused = true,
+            });
+            FileLoaded?.Invoke(path);
         }
     }
 #pragma warning restore CS0067

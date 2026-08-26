@@ -213,17 +213,19 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
     private void HandleFileLoaded(MpvContext mpv)
     {
         string? fileName = null;
+        var paused = true;
         TryMpv(() =>
         {
             fileName = mpv.GetPropertyString("filename");
             UpdateHardwareDecode(mpv.GetPropertyString("hwdec-current"));
+            paused = mpv.GetPropertyFlag("pause");
         }, "读取文件信息失败");
 
         UpdateSnapshot(snapshot => snapshot with
         {
             FilePath = fileName,
-            State = PlaybackState.Paused,
-            IsPaused = true,
+            State = paused ? PlaybackState.Paused : PlaybackState.Playing,
+            IsPaused = paused,
             Position = 0,
             Duration = 0,
         });
@@ -343,13 +345,36 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
         TryMpv(() => RequireMpv().Command("loadfile", fullPath, "replace"), "加载文件失败");
     }
 
-    public void Play() => TryMpv(() => RequireMpv().SetProperty("pause", "no"), "播放失败");
-    public void Pause() => TryMpv(() => RequireMpv().SetProperty("pause", "yes"), "暂停失败");
+    public void Play() => TryMpv(() =>
+    {
+        RequireMpv().SetProperty("pause", "no");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = PlaybackState.Playing,
+            IsPaused = false,
+        });
+    }, "播放失败");
+
+    public void Pause() => TryMpv(() =>
+    {
+        RequireMpv().SetProperty("pause", "yes");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = PlaybackState.Paused,
+            IsPaused = true,
+        });
+    }, "暂停失败");
 
     public void TogglePause() => TryMpv(() =>
     {
         var mpv = RequireMpv();
-        mpv.SetProperty("pause", mpv.GetPropertyFlag("pause") ? "no" : "yes");
+        var paused = !mpv.GetPropertyFlag("pause");
+        mpv.SetProperty("pause", paused ? "yes" : "no");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = paused ? PlaybackState.Paused : PlaybackState.Playing,
+            IsPaused = paused,
+        });
     }, "切换播放/暂停失败");
 
     public void Seek(double positionSeconds) =>
