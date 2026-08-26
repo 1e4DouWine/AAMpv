@@ -21,6 +21,14 @@ public static partial class MpvInterop
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial int mpv_initialize(IntPtr ctx);
 
+    [LibraryImport(LibMpv, EntryPoint = "mpv_load_config_file", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial int mpv_load_config_file(IntPtr ctx, string filename);
+
+    [LibraryImport(LibMpv, EntryPoint = "mpv_request_log_messages", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
+    public static partial int mpv_request_log_messages(IntPtr ctx, string minLevel);
+
     [LibraryImport(LibMpv, EntryPoint = "mpv_terminate_destroy")]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial void mpv_terminate_destroy(IntPtr ctx);
@@ -143,6 +151,16 @@ public static partial class MpvInterop
         QueueOverflow = 24,
     }
 
+    public enum MpvEndFileReason
+    {
+        Eof = 0,
+        Stop = 2,
+        Quit = 3,
+        Error = 4,
+        Redirect = 5,
+        Aborted = 6,
+    }
+
     // --- Structs ---
 
     [StructLayout(LayoutKind.Sequential)]
@@ -160,6 +178,15 @@ public static partial class MpvInterop
         public IntPtr Name;
         public MpvFormat Format;
         public IntPtr Data;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MpvEventLogMessage
+    {
+        public IntPtr Prefix;
+        public IntPtr Level;
+        public IntPtr Text;
+        public int LogLevel;
     }
 
     // --- Render API enums & structs ---

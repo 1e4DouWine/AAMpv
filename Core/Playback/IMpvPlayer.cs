@@ -17,6 +17,19 @@ public interface IMpvPlayer
     event Action<bool>? MuteChanged;
     event Action<bool>? EofReached;
     event Action<string>? ErrorOccurred;
+    event Action<PlaybackState>? PlaybackStateChanged;
+    event Action<double>? SpeedChanged;
+    event Action<string?>? HardwareDecodeChanged;
+    event Action<RenderBackendKind>? RenderBackendChanged;
+    event Action<string>? LogMessage;
+    event Action<string>? WarningOccurred;
+
+    PlaybackState PlaybackState { get; }
+    string? CurrentFilePath { get; }
+    string? CurrentHardwareDecode { get; }
+    RenderBackendKind RenderBackend { get; }
+
+    void Configure(MpvPlayerSettings settings);
 
     void LoadFile(string path);
     void Play();
@@ -28,6 +41,9 @@ public interface IMpvPlayer
     void SetVolume(double volume);
     void SetMute(bool mute);
     void ToggleMute();
+    void SetSpeed(double speed);
+    void ResetSpeed();
+    void Screenshot(string? path = null);
 
     /// <summary>
     /// 读取当前媒体的基础信息。

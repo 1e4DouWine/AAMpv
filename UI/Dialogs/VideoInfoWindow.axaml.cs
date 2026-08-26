@@ -25,6 +25,7 @@ public partial class VideoInfoWindow : Window
             ? $"{info.VideoWidth} x {info.VideoHeight}" : null);
         AddRow("视频编解码器", info.VideoCodec);
         AddRow("硬件解码", info.HwDecCurrent ?? "无");
+        AddRow("渲染后端", info.RenderBackend.ToString());
         AddRow("帧率", info.VideoFps.HasValue ? $"{info.VideoFps:F3} fps" : null);
         AddRow("视频码率", FormatBitrate(info.VideoBitrate));
         AddRow("像素格式", info.PixelFormat);

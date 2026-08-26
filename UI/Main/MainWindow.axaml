@@ -17,6 +17,7 @@
         MinWidth="640"
         MinHeight="480"
         KeyDown="OnKeyDown"
+        PointerPressed="OnWindowPointerPressed"
         PointerMoved="OnWindowPointerMoved"
         Background="{DynamicResource VideoAreaBackground}">
 
@@ -175,6 +176,42 @@
                                     </PathIcon.Data>
                                 </PathIcon>
                             </Button>
+                            <Button Click="OnSettingsClick"
+                                    ToolTip.Tip="设置"
+                                    MinWidth="40"
+                                    MinHeight="36"
+                                    Padding="10,6"
+                                    Background="Transparent"
+                                    Content="设置" />
+                            <Button Command="{Binding ScreenshotCommand}"
+                                    IsEnabled="{Binding HasFile}"
+                                    ToolTip.Tip="截图 (S)"
+                                    MinWidth="36"
+                                    MinHeight="36"
+                                    Padding="8,6"
+                                    Background="Transparent"
+                                    Content="截图" />
+                            <Button Command="{Binding DecreaseSpeedCommand}"
+                                    IsEnabled="{Binding HasFile}"
+                                    ToolTip.Tip="降低速度 ([)"
+                                    MinWidth="30"
+                                    MinHeight="36"
+                                    Padding="4,6"
+                                    Background="Transparent"
+                                    Content="-" />
+                            <TextBlock Text="{Binding Speed, StringFormat={}{0:0.00}x}"
+                                       Foreground="{DynamicResource SubtleTextBrush}"
+                                       VerticalAlignment="Center"
+                                       MinWidth="42"
+                                       TextAlignment="Center" />
+                            <Button Command="{Binding IncreaseSpeedCommand}"
+                                    IsEnabled="{Binding HasFile}"
+                                    ToolTip.Tip="提高速度 (])"
+                                    MinWidth="30"
+                                    MinHeight="36"
+                                    Padding="4,6"
+                                    Background="Transparent"
+                                    Content="+" />
                             <Slider x:Name="VolumeSlider"
                                     Minimum="0"
                                     Maximum="100"

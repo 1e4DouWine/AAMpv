@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AvaloniaAppMPV.Core.Playback;
 using AvaloniaAppMPV.Infrastructure.Avalonia;
+using AvaloniaAppMPV.Infrastructure.Settings;
 using AvaloniaAppMPV.UI.Common;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -21,10 +22,13 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IMpvPlayer _player;
     private readonly IDialogService _dialogService;
     private readonly IDispatcherService _dispatcher;
+    private readonly PlayerSettingsStore _settingsStore;
 
     private bool _isSeeking;
     private bool _isDragging;
     private bool _playRequestedAfterLoad;
+    private double _resumePosition;
+    private string? _currentPath;
     private DateTime _lastSeekTime = DateTime.MinValue;
     private int _lastDisplayedPositionSecond = -1;
     private int _errorVersion;
@@ -59,17 +63,34 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasError;
 
+    [ObservableProperty]
+    private PlaybackState _playbackState = PlaybackState.Unloaded;
+
+    [ObservableProperty]
+    private double _speed = 1.0;
+
+    [ObservableProperty]
+    private string? _hardwareDecode;
+
     // --- 派生显示属性 ---
 
     public string PositionText => FormatTime(Position);
     public string DurationText => FormatTime(Duration);
     public string TimeText => $"{PositionText} / {DurationText}";
 
-    public MainWindowViewModel(IMpvPlayer player, IDialogService dialogService, IDispatcherService dispatcher)
+    public MainWindowViewModel(
+        IMpvPlayer player,
+        IDialogService dialogService,
+        IDispatcherService dispatcher,
+        PlayerSettingsStore settingsStore)
     {
         _player = player;
         _dialogService = dialogService;
         _dispatcher = dispatcher;
+        _settingsStore = settingsStore;
+        Volume = settingsStore.Document.Player.Volume;
+        IsMuted = settingsStore.Document.Player.IsMuted;
+        Speed = settingsStore.Document.Player.DefaultSpeed;
 
         _player.FileLoaded += OnPlayerFileLoaded;
         _player.PositionChanged += OnPlayerPositionChanged;
@@ -77,14 +98,27 @@ public partial class MainWindowViewModel : ViewModelBase
         _player.PauseChanged += paused => IsPaused = paused;
         _player.VolumeChanged += vol => Volume = vol;
         _player.MuteChanged += muted => IsMuted = muted;
-        _player.EofReached += eof => { if (eof) IsPaused = true; };
+        _player.EofReached += eof =>
+        {
+            if (!eof)
+                return;
+            IsPaused = true;
+            Position = 0;
+            SaveCurrentPosition();
+        };
         _player.ErrorOccurred += OnPlayerError;
+        _player.PlaybackStateChanged += state => PlaybackState = state;
+        _player.SpeedChanged += speed => Speed = speed;
+        _player.HardwareDecodeChanged += value => HardwareDecode = value;
+        _player.WarningOccurred += OnPlayerWarning;
     }
 
     private void OnPlayerPositionChanged(double pos)
     {
         if (!_isSeeking)
             Position = pos;
+        if (_currentPath != null && _settingsStore.Document.Player.RememberPlaybackPosition)
+            _settingsStore.UpdatePosition(_currentPath, pos);
     }
 
     private void OnPlayerFileLoaded(string? fileName)
@@ -93,6 +127,16 @@ public partial class MainWindowViewModel : ViewModelBase
         Title = string.IsNullOrWhiteSpace(fileName)
             ? DefaultTitle
             : $"{Path.GetFileName(fileName)} - {DefaultTitle}";
+
+        _currentPath = fileName;
+        if (!string.IsNullOrWhiteSpace(fileName))
+            _settingsStore.AddRecentFile(fileName);
+        _resumePosition = _settingsStore.Document.Player.RememberPlaybackPosition && fileName != null
+            ? _settingsStore.GetPosition(fileName)
+            : 0;
+
+        if (_resumePosition > 0)
+            _player.Seek(_resumePosition);
 
         if (!_playRequestedAfterLoad)
             return;
@@ -117,6 +161,8 @@ public partial class MainWindowViewModel : ViewModelBase
         }, TimeSpan.FromSeconds(5));
     }
 
+    private void OnPlayerWarning(string message) => OnPlayerError(message);
+
     [RelayCommand]
     private async Task OpenFile()
     {
@@ -124,6 +170,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (path == null)
             return;
 
+        SaveCurrentPosition();
         ClearError();
         _playRequestedAfterLoad = true;
         HasFile = false;
@@ -135,6 +182,28 @@ public partial class MainWindowViewModel : ViewModelBase
 
     [RelayCommand]
     private void PlayPause() => _player.TogglePause();
+
+    [RelayCommand]
+    private void Screenshot()
+    {
+        try
+        {
+            _player.Screenshot(BuildScreenshotPath());
+        }
+        catch (Exception ex)
+        {
+            OnPlayerError($"截图失败: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    private void IncreaseSpeed() => SetSpeed(Speed + 0.25);
+
+    [RelayCommand]
+    private void DecreaseSpeed() => SetSpeed(Speed - 0.25);
+
+    [RelayCommand]
+    private void ResetSpeed() => SetSpeed(1.0);
 
     [RelayCommand]
     private void Mute() => _player.ToggleMute();
@@ -198,6 +267,7 @@ public partial class MainWindowViewModel : ViewModelBase
         var clamped = Math.Clamp(vol, 0, 100);
         Volume = clamped;
         _player.SetVolume(clamped);
+        _settingsStore.Document.Player.Volume = clamped;
     }
 
     // --- 键盘快捷键 ---
@@ -230,6 +300,20 @@ public partial class MainWindowViewModel : ViewModelBase
             case "M":
                 _player.ToggleMute();
                 return true;
+            case "S":
+                ScreenshotCommand.Execute(null);
+                return true;
+            case "R":
+                ResetSpeedCommand.Execute(null);
+                return true;
+            case "OemOpenBrackets":
+            case "[":
+                DecreaseSpeedCommand.Execute(null);
+                return true;
+            case "OemCloseBrackets":
+            case "]":
+                IncreaseSpeedCommand.Execute(null);
+                return true;
             default:
                 return false;
         }
@@ -259,6 +343,53 @@ public partial class MainWindowViewModel : ViewModelBase
         Interlocked.Increment(ref _errorVersion);
         HasError = false;
         ErrorMessage = null;
+    }
+
+    public void SaveState()
+    {
+        SaveCurrentPosition();
+        _settingsStore.Document.Player.IsMuted = IsMuted;
+        _settingsStore.Document.Player.DefaultSpeed = Speed;
+        _settingsStore.Document.Player.Volume = Volume;
+        _settingsStore.Save();
+    }
+
+    public void OpenDroppedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        SaveCurrentPosition();
+        ClearError();
+        _playRequestedAfterLoad = true;
+        HasFile = false;
+        Position = 0;
+        Duration = 0;
+        Title = DefaultTitle;
+        _player.LoadFile(path);
+    }
+
+    private void SetSpeed(double speed)
+    {
+        var normalized = Math.Clamp(speed, 0.5, 2.0);
+        _player.SetSpeed(normalized);
+        Speed = normalized;
+        _settingsStore.Document.Player.DefaultSpeed = normalized;
+    }
+
+    private void SaveCurrentPosition()
+    {
+        if (_currentPath != null && _settingsStore.Document.Player.RememberPlaybackPosition)
+            _settingsStore.UpdatePosition(_currentPath, Position);
+    }
+
+    private string BuildScreenshotPath()
+    {
+        var directory = string.IsNullOrWhiteSpace(_settingsStore.Document.Player.ScreenshotDirectory)
+            ? _settingsStore.ScreenshotDirectory
+            : _settingsStore.Document.Player.ScreenshotDirectory;
+        Directory.CreateDirectory(directory);
+        var name = $"mpv-shot-{DateTime.Now:yyyyMMdd-HHmmss-fff}.png";
+        return Path.Combine(directory, name);
     }
 
     private double ClampPosition(double positionSeconds)

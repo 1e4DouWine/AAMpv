@@ -1,11 +1,15 @@
 using System;
+using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using AvaloniaAppMPV.Infrastructure.Mpv;
+using AvaloniaAppMPV.Infrastructure.Settings;
 using AvaloniaAppMPV.UI.Dialogs;
 
 namespace AvaloniaAppMPV.UI.Main;
@@ -38,6 +42,9 @@ public partial class MainWindow : Window
         VolumeSlider.AddHandler(PointerReleasedEvent, OnVolumeSliderReleased, RoutingStrategies.Tunnel);
 
         InitializeAutoHide();
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        AddHandler(DragDrop.DropEvent, OnDrop);
     }
 
     public void AttachPlayerService(MpvPlayerService playerService)
@@ -94,6 +101,36 @@ public partial class MainWindow : Window
 
         _lastMousePosition = pos;
         ShowControlBar();
+    }
+
+    private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.ClickCount == 2 && e.Source is UI.Controls.MpvVideoView)
+            ToggleFullScreen();
+    }
+
+    private async void OnSettingsClick(object? sender, RoutedEventArgs e)
+    {
+        var store = App.Services.GetService(typeof(PlayerSettingsStore)) as PlayerSettingsStore;
+        if (store != null)
+            await new SettingsWindow(store).ShowDialog(this);
+    }
+
+    private void OnDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = e.DataTransfer.Contains(DataFormat.File)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnDrop(object? sender, DragEventArgs e)
+    {
+        var file = e.DataTransfer.TryGetFiles()?.FirstOrDefault();
+        var path = file?.Path.LocalPath;
+        if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            ViewModel.OpenDroppedFile(path);
+        e.Handled = true;
     }
 
     private void OnControlBarPointerEntered(object? sender, PointerEventArgs e)
@@ -259,9 +296,30 @@ public partial class MainWindow : Window
 
     private void OnKeyDown(object? sender, KeyEventArgs e)
     {
+        if (e.Key == Key.F)
+        {
+            ToggleFullScreen();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.Escape && WindowState == WindowState.FullScreen)
+        {
+            ToggleFullScreen();
+            e.Handled = true;
+            return;
+        }
+
         // 键盘有交互时也让控制条重新出现，避免“盲操”。
         ShowControlBar();
         e.Handled = ViewModel.HandleKeyDown(e.Key.ToString());
+    }
+
+    private void ToggleFullScreen()
+    {
+        WindowState = WindowState == WindowState.FullScreen
+            ? WindowState.Normal
+            : WindowState.FullScreen;
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
@@ -283,6 +341,7 @@ public partial class MainWindow : Window
 
         _hideTimer?.Stop();
         _hideTimer = null;
+        ViewModel.SaveState();
 
         // 先释放 render context，再销毁 mpv core，避免原生层访问失效资源。
         VideoView.CleanupRenderContext();

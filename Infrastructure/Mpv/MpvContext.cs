@@ -71,6 +71,24 @@ public sealed class MpvContext : IDisposable
         }
     }
 
+    public void LoadConfigFile(string path)
+    {
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            Check(mpv_load_config_file(_mpvHandle, path));
+        }
+    }
+
+    public void RequestLogMessages(string level = "warn")
+    {
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            Check(mpv_request_log_messages(_mpvHandle, level));
+        }
+    }
+
     public bool GetPropertyFlag(string name)
     {
         lock (_lock)
