@@ -1,6 +1,6 @@
 param(
-    [string]$ReleaseTag = "2026-07-10-e5486b96d7",
-    [string]$AssetName = "mpv-dev-x86_64-v3-20260710-git-e5486b96d7.7z",
+    [string]$ReleaseTag = "2026-08-26-c318236b88",
+    [string]$AssetName = "mpv-dev-x86_64-v3-20260826-git-c318236b88.7z",
     [string]$DestinationPath = "3rdparty/mpv/libmpv-2.dll"
 )
 

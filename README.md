@@ -31,7 +31,7 @@
 .\scripts\Download-Mpv.ps1
 ```
 
-下载脚本当前使用 [zhongfly/mpv-winbuild](https://github.com/zhongfly/mpv-winbuild) 提供的 `mpv-dev-x86_64-v3-20260710-git-e5486b96d7.7z`。
+下载脚本当前使用 [zhongfly/mpv-winbuild](https://github.com/zhongfly/mpv-winbuild) 提供的 `mpv-dev-x86_64-v3-20260826-git-c318236b88.7z`。
 
 ## 项目结构
 
