@@ -80,15 +80,6 @@ public sealed class MpvContext : IDisposable
         }
     }
 
-    public void RequestLogMessages(string level = "warn")
-    {
-        lock (_lock)
-        {
-            ThrowIfDisposed();
-            Check(mpv_request_log_messages(_mpvHandle, level));
-        }
-    }
-
     public bool GetPropertyFlag(string name)
     {
         lock (_lock)
@@ -99,16 +90,6 @@ public sealed class MpvContext : IDisposable
         }
     }
 
-    public double GetPropertyDouble(string name)
-    {
-        lock (_lock)
-        {
-            ThrowIfDisposed();
-            Check(mpv_get_property(_mpvHandle, name, MpvFormat.Double, out double val));
-            return val;
-        }
-    }
-
     public bool TryGetPropertyDouble(string name, out double value)
     {
         lock (_lock)
@@ -116,16 +97,6 @@ public sealed class MpvContext : IDisposable
             ThrowIfDisposed();
             int err = mpv_get_property(_mpvHandle, name, MpvFormat.Double, out value);
             return err >= 0;
-        }
-    }
-
-    public long GetPropertyLong(string name)
-    {
-        lock (_lock)
-        {
-            ThrowIfDisposed();
-            Check(mpv_get_property(_mpvHandle, name, MpvFormat.Int64, out long val));
-            return val;
         }
     }
 
@@ -191,15 +162,6 @@ public sealed class MpvContext : IDisposable
                         FreeUtf8(span[i]);
                 }
             }
-        }
-    }
-
-    public void CommandString(string cmd)
-    {
-        lock (_lock)
-        {
-            ThrowIfDisposed();
-            Check(mpv_command_string(_mpvHandle, cmd));
         }
     }
 

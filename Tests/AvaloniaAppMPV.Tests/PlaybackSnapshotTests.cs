@@ -88,14 +88,9 @@ public sealed class PlaybackSnapshotTests
         public event Action<string?>? FileLoaded;
         public event Action<PlaybackSnapshot>? SnapshotChanged;
         public event Action<string>? ErrorOccurred;
-        public event Action<string>? LogMessage;
         public event Action<string>? WarningOccurred;
 
         public PlaybackSnapshot Snapshot { get; private set; } = PlaybackSnapshot.Empty;
-        public PlaybackState PlaybackState => Snapshot.State;
-        public string? CurrentFilePath => Snapshot.FilePath;
-        public string? CurrentHardwareDecode => Snapshot.HardwareDecode;
-        public RenderBackendKind RenderBackend => Snapshot.RenderBackend;
         public string? LastLoadedPath { get; private set; }
 
         public void Configure(MpvPlayerSettings settings) { }
@@ -115,7 +110,6 @@ public sealed class PlaybackSnapshotTests
         public void SetMute(bool mute) { }
         public void ToggleMute() { }
         public void SetSpeed(double speed) { }
-        public void ResetSpeed() { }
         public void Screenshot(string? path = null) { }
         public VideoInfo? GetVideoInfo() => null;
 

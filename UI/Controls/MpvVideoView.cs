@@ -2,7 +2,6 @@ using System;
 using Avalonia.Controls;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
-using AvaloniaAppMPV.Core.Playback;
 using AvaloniaAppMPV.Infrastructure.Mpv;
 
 namespace AvaloniaAppMPV.UI.Controls;
@@ -25,9 +24,8 @@ public class MpvVideoView : OpenGlControlBase
         try
         {
             _renderHost.InitializeCore();
-            if (_renderHost.RenderBackend is RenderBackendKind.Direct3D11 or RenderBackendKind.Vulkan)
-                _renderHost.ReportError($"渲染后端 {_renderHost.RenderBackend} 尚未实现，已回退到 OpenGL。");
-            _renderBackend = CreateBackend(_renderHost.RenderBackend);
+            // 当前承载控件只实现 OpenGL；后续增加其他后端时再引入真正的工厂。
+            _renderBackend = new OpenGlMpvRenderBackend();
             _renderBackend.Initialize(
                 gl,
                 _renderHost.MpvHandle,
@@ -61,9 +59,4 @@ public class MpvVideoView : OpenGlControlBase
 
     protected override void OnOpenGlDeinit(GlInterface gl) => CleanupRenderContext();
 
-    private static IMpvRenderBackend CreateBackend(RenderBackendKind kind)
-    {
-        // D3D11/Vulkan 后端在当前阶段只有抽象，实际 Avalonia 承载尚未实现。
-        return new OpenGlMpvRenderBackend();
-    }
 }

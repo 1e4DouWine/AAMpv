@@ -36,6 +36,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private long _lastSnapshotRevision = -1;
     private string? _pendingFilePath;
     private const double SeekThrottleMs = 100;
+    private static readonly TimeSpan PositionSaveInterval = TimeSpan.FromSeconds(1);
+    private DateTime _lastPositionSaveUtc = DateTime.MinValue;
 
     // --- 可绑定状态 ---
 
@@ -126,25 +128,24 @@ public partial class MainWindowViewModel : ViewModelBase
         if (!_isSeeking)
             Position = snapshot.Position;
 
+        var isCurrentMedia = _currentPath != null &&
+            string.Equals(_currentPath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase);
+
         if (snapshot.State != PlaybackState.Ended)
             _endHandled = false;
         else
         {
             IsPaused = true;
             Position = 0;
-            if (!_endHandled)
+            if (isCurrentMedia && !_endHandled)
             {
                 _endHandled = true;
-                SaveCurrentPosition();
+                SaveCurrentPosition(force: true);
             }
         }
 
-        if (_currentPath != null &&
-            string.Equals(_currentPath, snapshot.FilePath, StringComparison.OrdinalIgnoreCase) &&
-            _settingsStore.Document.Player.RememberPlaybackPosition)
-        {
-            _settingsStore.UpdatePosition(_currentPath, Position);
-        }
+        if (isCurrentMedia)
+            SaveCurrentPosition();
     }
 
     private void OnPlayerFileLoaded(string? fileName)
@@ -156,6 +157,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
         _pendingFilePath = null;
         _currentPath = fileName;
+        _lastPositionSaveUtc = DateTime.MinValue;
         if (!string.IsNullOrWhiteSpace(fileName))
             _settingsStore.AddRecentFile(fileName);
         _resumePosition = _settingsStore.Document.Player.RememberPlaybackPosition && fileName != null
@@ -207,7 +209,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (path == null)
             return;
 
-        SaveCurrentPosition();
+        SaveCurrentPosition(force: true);
         ClearError();
         PrepareForNewFile(path);
         _player.LoadFile(path);
@@ -380,7 +382,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public void SaveState()
     {
-        SaveCurrentPosition();
+        SaveCurrentPosition(force: true);
         _settingsStore.Document.Player.IsMuted = IsMuted;
         _settingsStore.Document.Player.DefaultSpeed = Speed;
         _settingsStore.Document.Player.Volume = Volume;
@@ -391,7 +393,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(path))
             return;
-        SaveCurrentPosition();
+        SaveCurrentPosition(force: true);
         ClearError();
         PrepareForNewFile(path);
         _player.LoadFile(path);
@@ -418,10 +420,21 @@ public partial class MainWindowViewModel : ViewModelBase
         _settingsStore.Document.Player.DefaultSpeed = normalized;
     }
 
-    private void SaveCurrentPosition()
+    private void SaveCurrentPosition(bool force = false)
     {
-        if (_currentPath != null && _settingsStore.Document.Player.RememberPlaybackPosition)
-            _settingsStore.UpdatePosition(_currentPath, Position);
+        if (_currentPath == null || !_settingsStore.Document.Player.RememberPlaybackPosition)
+            return;
+
+        var now = DateTime.UtcNow;
+        if (!force &&
+            _lastPositionSaveUtc != DateTime.MinValue &&
+            now - _lastPositionSaveUtc < PositionSaveInterval)
+        {
+            return;
+        }
+
+        _settingsStore.UpdatePosition(_currentPath, Position);
+        _lastPositionSaveUtc = now;
     }
 
     private string BuildScreenshotPath()

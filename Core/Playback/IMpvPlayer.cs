@@ -12,14 +12,9 @@ public interface IMpvPlayer
     event Action<string?>? FileLoaded;
     event Action<PlaybackSnapshot>? SnapshotChanged;
     event Action<string>? ErrorOccurred;
-    event Action<string>? LogMessage;
     event Action<string>? WarningOccurred;
 
     PlaybackSnapshot Snapshot { get; }
-    PlaybackState PlaybackState { get; }
-    string? CurrentFilePath { get; }
-    string? CurrentHardwareDecode { get; }
-    RenderBackendKind RenderBackend { get; }
 
     void Configure(MpvPlayerSettings settings);
 
@@ -34,7 +29,6 @@ public interface IMpvPlayer
     void SetMute(bool mute);
     void ToggleMute();
     void SetSpeed(double speed);
-    void ResetSpeed();
     void Screenshot(string? path = null);
 
     /// <summary>

@@ -25,29 +25,13 @@ public static partial class MpvInterop
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial int mpv_load_config_file(IntPtr ctx, string filename);
 
-    [LibraryImport(LibMpv, EntryPoint = "mpv_request_log_messages", StringMarshalling = StringMarshalling.Utf8)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    public static partial int mpv_request_log_messages(IntPtr ctx, string minLevel);
-
     [LibraryImport(LibMpv, EntryPoint = "mpv_terminate_destroy")]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static partial void mpv_terminate_destroy(IntPtr ctx);
 
-    [LibraryImport(LibMpv, EntryPoint = "mpv_destroy")]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    public static partial void mpv_destroy(IntPtr ctx);
-
-    [LibraryImport(LibMpv, EntryPoint = "mpv_command")]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    public static partial int mpv_command(IntPtr ctx, IntPtr[] args);
-
     [LibraryImport(LibMpv, EntryPoint = "mpv_command")]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
     public static unsafe partial int mpv_command_ptr(IntPtr ctx, IntPtr* args);
-
-    [LibraryImport(LibMpv, EntryPoint = "mpv_command_string", StringMarshalling = StringMarshalling.Utf8)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
-    public static partial int mpv_command_string(IntPtr ctx, string args);
 
     [LibraryImport(LibMpv, EntryPoint = "mpv_set_option_string", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
@@ -136,7 +120,6 @@ public static partial class MpvInterop
     {
         None = 0,
         Shutdown = 1,
-        LogMessage = 2,
         GetPropertyReply = 3,
         SetPropertyReply = 4,
         CommandReply = 5,
@@ -178,15 +161,6 @@ public static partial class MpvInterop
         public IntPtr Name;
         public MpvFormat Format;
         public IntPtr Data;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    public struct MpvEventLogMessage
-    {
-        public IntPtr Prefix;
-        public IntPtr Level;
-        public IntPtr Text;
-        public int LogLevel;
     }
 
     // --- Render API enums & structs ---

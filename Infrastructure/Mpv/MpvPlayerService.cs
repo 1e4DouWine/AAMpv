@@ -19,6 +19,7 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
     private MpvPlayerSettings _settings = new();
     private bool _disposed;
     private PlaybackSnapshot _snapshot = PlaybackSnapshot.Empty;
+    private DateTime _lastPositionNotificationUtc = DateTime.MinValue;
 
     private const ulong ReplyTimePos = 1;
     private const ulong ReplyDuration = 2;
@@ -32,32 +33,13 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
     public event Action<string?>? FileLoaded;
     public event Action<PlaybackSnapshot>? SnapshotChanged;
     public event Action<string>? ErrorOccurred;
-    public event Action<string>? LogMessage;
     public event Action<string>? WarningOccurred;
 
-    public bool IsReady
-    {
-        get { lock (_stateLock) return _coreSession?.Context.IsInitialized == true; }
-    }
+    private static readonly TimeSpan PositionNotificationInterval = TimeSpan.FromMilliseconds(100);
 
     public PlaybackSnapshot Snapshot
     {
         get { lock (_stateLock) return _snapshot; }
-    }
-
-    public PlaybackState PlaybackState
-    {
-        get { lock (_stateLock) return _snapshot.State; }
-    }
-
-    public string? CurrentFilePath
-    {
-        get { lock (_stateLock) return _snapshot.FilePath; }
-    }
-
-    public string? CurrentHardwareDecode
-    {
-        get { lock (_stateLock) return _snapshot.HardwareDecode; }
     }
 
     public RenderBackendKind RenderBackend
@@ -135,7 +117,6 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
                 mpv.ObserveProperty("mute", MpvFormat.Flag, ReplyMute);
                 mpv.ObserveProperty("speed", MpvFormat.Double, ReplySpeed);
                 mpv.ObserveProperty("hwdec-current", MpvFormat.String, ReplyHwDec);
-                mpv.RequestLogMessages("warn");
                 session.StartEventLoop(ev => HandleEvent(mpv, ev));
                 _coreSession = session;
             }
@@ -201,9 +182,6 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
             case MpvEventId.PropertyChange:
                 HandlePropertyChange(ev);
                 break;
-            case MpvEventId.LogMessage:
-                HandleLogMessage(ev);
-                break;
             case MpvEventId.EndFile:
                 HandleEndFile(ev);
                 break;
@@ -242,7 +220,8 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
         {
             case ReplyTimePos when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
                 var position = *(double*)prop.Data;
-                UpdateSnapshot(snapshot => snapshot with { Position = position }); break;
+                UpdatePositionSnapshot(position);
+                break;
             case ReplyDuration when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
                 var duration = *(double*)prop.Data;
                 UpdateSnapshot(snapshot => snapshot with { Duration = duration }); break;
@@ -275,18 +254,6 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
                 ? snapshot.State
                 : paused ? PlaybackState.Paused : PlaybackState.Playing,
         });
-    }
-
-    private void HandleLogMessage(MpvEvent ev)
-    {
-        if (ev.Data == IntPtr.Zero)
-            return;
-        var log = Marshal.PtrToStructure<MpvEventLogMessage>(ev.Data);
-        var prefix = Marshal.PtrToStringUTF8(log.Prefix) ?? "mpv";
-        var level = Marshal.PtrToStringUTF8(log.Level) ?? "warn";
-        var text = Marshal.PtrToStringUTF8(log.Text)?.TrimEnd() ?? string.Empty;
-        if (text.Length > 0)
-            Publish(() => LogMessage?.Invoke($"[{prefix}] {level}: {text}"));
     }
 
     private void HandleEndFile(MpvEvent ev)
@@ -420,8 +387,6 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
         }, "设置播放速度失败");
     }
 
-    public void ResetSpeed() => SetSpeed(1.0);
-
     public void Screenshot(string? path = null)
     {
         TryMpv(() =>
@@ -471,6 +436,29 @@ public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, 
     private void UpdateHardwareDecode(string? value)
     {
         UpdateSnapshot(snapshot => snapshot with { HardwareDecode = value });
+    }
+
+    private void UpdatePositionSnapshot(double position)
+    {
+        PlaybackSnapshot snapshot;
+        lock (_stateLock)
+        {
+            _snapshot = _snapshot with
+            {
+                Position = position,
+                Revision = _snapshot.Revision + 1,
+            };
+
+            var now = DateTime.UtcNow;
+            if (_lastPositionNotificationUtc != DateTime.MinValue &&
+                now - _lastPositionNotificationUtc < PositionNotificationInterval)
+                return;
+
+            _lastPositionNotificationUtc = now;
+            snapshot = _snapshot;
+        }
+
+        Publish(() => SnapshotChanged?.Invoke(snapshot));
     }
 
     private void UpdateSnapshot(Func<PlaybackSnapshot, PlaybackSnapshot> update)
