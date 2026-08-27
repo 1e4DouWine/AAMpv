@@ -2,20 +2,26 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="AvaloniaAppMPV.UI.Dialogs.VideoInfoWindow"
         Title="视频信息"
-        Width="480"
-        Height="450"
+        Width="520"
+        Height="500"
         MinWidth="380"
         MinHeight="320"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
 
-    <Border Padding="24">
+    <Border Padding="28,24,28,20">
         <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="3" Margin="0,0,0,14">
+                <TextBlock Text="视频信息" FontSize="22" FontWeight="SemiBold" />
+                <TextBlock Text="当前媒体的容器、视频与音频参数"
+                           FontSize="12"
+                           Opacity="0.65" />
+            </StackPanel>
             <Button DockPanel.Dock="Bottom"
                     Content="关闭"
                     HorizontalAlignment="Center"
                     MinWidth="100"
-                    Margin="0,16,0,0"
+                    Margin="0,18,0,0"
                     Padding="16,8"
                     Click="OnCloseClick"/>
 
