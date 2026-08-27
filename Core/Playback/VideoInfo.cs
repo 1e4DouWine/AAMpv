@@ -17,5 +17,6 @@ public record VideoInfo(
     string? AudioCodec,
     long? AudioSampleRate,
     long? AudioChannels,
-    double? AudioBitrate
+    double? AudioBitrate,
+    RenderBackendKind RenderBackend
 );

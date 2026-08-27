@@ -1,0 +1,67 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="AvaloniaAppMPV.UI.Dialogs.SettingsWindow"
+        Title="播放器设置"
+        Width="560"
+        Height="520"
+        MinWidth="480"
+        MinHeight="420">
+    <ScrollViewer>
+        <StackPanel Spacing="12" Margin="24">
+            <TextBlock Text="播放设置" FontSize="20" FontWeight="SemiBold" />
+
+            <TextBlock Text="硬件解码" />
+            <ComboBox x:Name="HardwareDecodeComboBox">
+                <ComboBoxItem Content="自动选择（推荐）" />
+                <ComboBoxItem Content="关闭硬解" />
+                <ComboBoxItem Content="D3D11VA" />
+                <ComboBoxItem Content="D3D11VA Copy" />
+                <ComboBoxItem Content="NVDEC" />
+                <ComboBoxItem Content="NVDEC Copy" />
+                <ComboBoxItem Content="Vulkan" />
+                <ComboBoxItem Content="Vulkan Copy" />
+                <ComboBoxItem Content="DXVA2" />
+                <ComboBoxItem Content="DXVA2 Copy" />
+            </ComboBox>
+
+            <TextBlock Text="渲染后端" />
+            <ComboBox x:Name="RenderBackendComboBox">
+                <ComboBoxItem Content="自动（当前使用 OpenGL）" />
+                <ComboBoxItem Content="OpenGL" />
+                <ComboBoxItem Content="D3D11（尚未实现）" />
+                <ComboBoxItem Content="Vulkan（尚未实现）" />
+            </ComboBox>
+
+            <TextBlock Text="默认播放速度" />
+            <ComboBox x:Name="DefaultSpeedComboBox">
+                <ComboBoxItem Content="0.5x" />
+                <ComboBoxItem Content="1x" />
+                <ComboBoxItem Content="1.25x" />
+                <ComboBoxItem Content="1.5x" />
+                <ComboBoxItem Content="2x" />
+            </ComboBox>
+
+            <CheckBox x:Name="RememberPositionCheckBox" Content="记忆每个文件的播放位置" />
+            <CheckBox x:Name="UseCustomConfigCheckBox"
+                      Content="启用自定义 mpv.conf（重启后生效)" />
+
+            <TextBlock Text="mpv.conf 路径" />
+            <TextBox x:Name="ConfigPathTextBox" IsReadOnly="True" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="创建/打开配置文件" Click="OnOpenConfigClick" />
+                <Button Content="打开配置目录" Click="OnOpenConfigDirectoryClick" />
+            </StackPanel>
+
+            <TextBlock Text="截图目录" />
+            <TextBox x:Name="ScreenshotDirectoryTextBox" />
+
+            <TextBlock Text="修改硬解、渲染后端或 mpv.conf 后，需要重启应用才能完全生效。"
+                       TextWrapping="Wrap"
+                       Opacity="0.7" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Content="取消" Click="OnCancelClick" />
+                <Button Content="保存" Click="OnSaveClick" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

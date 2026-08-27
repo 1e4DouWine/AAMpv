@@ -1,5 +1,8 @@
 using System;
 using System.Globalization;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using AvaloniaAppMPV.Core.Playback;
@@ -8,21 +11,15 @@ using static AvaloniaAppMPV.Infrastructure.Mpv.MpvInterop;
 
 namespace AvaloniaAppMPV.Infrastructure.Mpv;
 
-/// <summary>
-/// mpv 的播放服务实现。
-/// 它负责：
-/// 1. 初始化 mpv core
-/// 2. 把 mpv 事件转成适合 UI 使用的托管事件
-/// 3. 提供统一的播放控制入口
-/// </summary>
-public sealed class MpvPlayerService : IMpvPlayer, IDisposable, IAsyncDisposable
+public sealed class MpvPlayerService : IMpvPlayer, IMpvRenderHost, IDisposable, IAsyncDisposable
 {
     private readonly IDispatcherService _dispatcher;
     private readonly object _stateLock = new();
-    private MpvContext? _mpv;
-    private CancellationTokenSource? _cts;
-    private Task? _eventLoopTask;
+    private MpvCoreSession? _coreSession;
+    private MpvPlayerSettings _settings = new();
     private bool _disposed;
+    private PlaybackSnapshot _snapshot = PlaybackSnapshot.Empty;
+    private DateTime _lastPositionNotificationUtc = DateTime.MinValue;
 
     private const ulong ReplyTimePos = 1;
     private const ulong ReplyDuration = 2;
@@ -30,275 +27,399 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable, IAsyncDisposable
     private const ulong ReplyVolume = 4;
     private const ulong ReplyEofReached = 5;
     private const ulong ReplyMute = 6;
+    private const ulong ReplySpeed = 7;
+    private const ulong ReplyHwDec = 8;
 
     public event Action<string?>? FileLoaded;
-    public event Action<double>? PositionChanged;
-    public event Action<double>? DurationChanged;
-    public event Action<bool>? PauseChanged;
-    public event Action<double>? VolumeChanged;
-    public event Action<bool>? EofReached;
-    public event Action<bool>? MuteChanged;
+    public event Action<PlaybackSnapshot>? SnapshotChanged;
     public event Action<string>? ErrorOccurred;
+    public event Action<string>? WarningOccurred;
 
-    public bool IsReady
+    private static readonly TimeSpan PositionNotificationInterval = TimeSpan.FromMilliseconds(100);
+
+    public PlaybackSnapshot Snapshot
     {
-        get
-        {
-            lock (_stateLock)
-                return _mpv?.IsInitialized == true;
-        }
+        get { lock (_stateLock) return _snapshot; }
     }
 
-    /// <summary>
-    /// 暴露原生 mpv 句柄，供视频控件创建 render context 时使用。
-    /// </summary>
+    public RenderBackendKind RenderBackend
+    {
+        get { lock (_stateLock) return _snapshot.RenderBackend; }
+    }
+
     public IntPtr MpvHandle
     {
-        get
+        get { lock (_stateLock) return _coreSession?.Handle ?? IntPtr.Zero; }
+    }
+
+    public MpvPlayerService(IDispatcherService dispatcher) => _dispatcher = dispatcher;
+
+    public void Configure(MpvPlayerSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        lock (_stateLock)
         {
-            lock (_stateLock)
-                return _mpv?.Handle ?? IntPtr.Zero;
+            if (_coreSession != null)
+                throw new InvalidOperationException("播放器已经初始化，设置需要在初始化前修改。");
+            _settings = settings.Clone();
+            _settings.DefaultSpeed = NormalizeSpeed(_settings.DefaultSpeed);
+            _settings.Volume = Math.Clamp(_settings.Volume, 0, 100);
+            _snapshot = _snapshot with
+            {
+                Speed = _settings.DefaultSpeed,
+                Volume = _settings.Volume,
+                IsMuted = _settings.IsMuted,
+                RenderBackend = RenderBackendKind.OpenGL,
+            };
         }
     }
 
-    public MpvPlayerService(IDispatcherService dispatcher)
-    {
-        _dispatcher = dispatcher;
-    }
+    public void ReportError(string message) => Publish(() => ErrorOccurred?.Invoke(message));
 
-    /// <summary>
-    /// 供渲染层主动上报错误，例如 render context 初始化失败。
-    /// </summary>
-    public void ReportError(string message)
-    {
-        _dispatcher.Post(() => ErrorOccurred?.Invoke(message));
-    }
-
-    /// <summary>
-    /// 初始化 mpv core。
-    /// 渲染上下文由 MpvVideoView 在 OpenGL 初始化阶段单独创建。
-    /// </summary>
     public void InitializeCore()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        Exception? initializationError = null;
+        MpvCoreSession? failedSession = null;
 
         lock (_stateLock)
         {
-            if (_mpv != null)
+            if (_coreSession != null)
                 return;
 
-            MpvContext? mpv = null;
-            CancellationTokenSource? cts = null;
-
+            MpvCoreSession? session = null;
             try
             {
-                mpv = new MpvContext();
-                mpv.SetOption("hwdec", "auto");
+                var settings = _settings.Clone();
+                if (settings.RenderBackend is RenderBackendKind.Direct3D11 or RenderBackendKind.Vulkan)
+                    PublishWarning($"渲染后端 {settings.RenderBackend} 尚未实现，当前使用 OpenGL。");
+                session = new MpvCoreSession();
+                var mpv = session.Context;
+                mpv.SetOption("config", "no");
+                mpv.SetOption("hwdec", ToMpvHardwareDecode(settings.HardwareDecode));
                 mpv.SetOption("keep-open", "yes");
                 mpv.SetOption("idle", "yes");
                 mpv.SetOption("vo", "libmpv");
+                mpv.SetOption("speed", settings.DefaultSpeed.ToString(CultureInfo.InvariantCulture));
                 mpv.Initialize();
 
-                // 订阅界面需要关注的核心属性变化。
+                LoadCustomConfig(mpv, settings);
+                // These are mandatory for the embedded OpenGL render context.
+                mpv.SetProperty("hwdec", ToMpvHardwareDecode(settings.HardwareDecode));
+                mpv.SetProperty("volume", settings.Volume.ToString("F0", CultureInfo.InvariantCulture));
+                mpv.SetProperty("mute", settings.IsMuted ? "yes" : "no");
+
                 mpv.ObserveProperty("time-pos", MpvFormat.Double, ReplyTimePos);
                 mpv.ObserveProperty("duration", MpvFormat.Double, ReplyDuration);
                 mpv.ObserveProperty("pause", MpvFormat.Flag, ReplyPause);
                 mpv.ObserveProperty("volume", MpvFormat.Double, ReplyVolume);
                 mpv.ObserveProperty("eof-reached", MpvFormat.Flag, ReplyEofReached);
                 mpv.ObserveProperty("mute", MpvFormat.Flag, ReplyMute);
-
-                // 使用 wakeup callback 后，事件线程只会在有事件时被唤醒。
-                mpv.InstallWakeupCallback();
-
-                cts = new CancellationTokenSource();
-                _mpv = mpv;
-                _cts = cts;
-                _eventLoopTask = Task.Run(() => EventLoop(mpv, cts.Token));
+                mpv.ObserveProperty("speed", MpvFormat.Double, ReplySpeed);
+                mpv.ObserveProperty("hwdec-current", MpvFormat.String, ReplyHwDec);
+                session.StartEventLoop(ev => HandleEvent(mpv, ev));
+                _coreSession = session;
             }
-            catch
+            catch (Exception ex)
             {
-                _eventLoopTask = null;
-                _cts = null;
-                _mpv = null;
-
-                cts?.Cancel();
-                cts?.Dispose();
-                mpv?.Dispose();
-                throw;
+                failedSession = session;
+                initializationError = ex;
             }
+        }
+
+        if (initializationError != null)
+        {
+            failedSession?.Dispose();
+            ExceptionDispatchInfo.Capture(initializationError).Throw();
+        }
+
+        UpdateSnapshot(snapshot => snapshot with { State = PlaybackState.Unloaded });
+    }
+
+    private void LoadCustomConfig(MpvContext mpv, MpvPlayerSettings settings)
+    {
+        if (!settings.UseCustomMpvConfig || string.IsNullOrWhiteSpace(settings.MpvConfigPath))
+            return;
+
+        var path = Path.GetFullPath(settings.MpvConfigPath);
+        if (!File.Exists(path))
+        {
+            PublishWarning($"MPV 配置文件不存在，已跳过: {path}");
+            return;
+        }
+
+        var forbidden = MpvConfigValidator.FindForbiddenOptions(path);
+        if (forbidden.Count > 0)
+        {
+            PublishWarning($"MPV 配置包含嵌入渲染不允许的选项，已跳过: {string.Join(", ", forbidden)}");
+            return;
+        }
+
+        try
+        {
+            mpv.LoadConfigFile(path);
+        }
+        catch (MpvException ex)
+        {
+            PublishWarning($"MPV 配置加载失败，已跳过: {ex.Message}");
         }
     }
 
-    private void EventLoop(MpvContext mpv, CancellationToken ct)
+    private void HandleEvent(MpvContext mpv, MpvEvent ev)
     {
-        var signal = mpv.WakeupSignal;
-        while (!ct.IsCancellationRequested)
+        switch (ev.EventId)
         {
-            try
-            {
-                signal.Wait(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (ObjectDisposedException)
-            {
-                return;
-            }
-
-            signal.Reset();
-
-            // 非阻塞地一次性把当前积压的事件都取完。
-            while (!ct.IsCancellationRequested)
-            {
-                var ev = mpv.WaitEvent(0);
-                if (ev == null || ev.Value.EventId == MpvEventId.None)
-                    break;
-
-                switch (ev.Value.EventId)
+            case MpvEventId.StartFile:
+                UpdateSnapshot(snapshot => snapshot with
                 {
-                    case MpvEventId.Shutdown:
-                        return;
-                    case MpvEventId.FileLoaded:
-                    {
-                        string? fileName = null;
-                        TryMpv(
-                            () => fileName = mpv.GetPropertyString("filename"),
-                            "读取文件信息失败");
-                        _dispatcher.Post(() => FileLoaded?.Invoke(fileName));
-                        break;
-                    }
-                    case MpvEventId.PropertyChange:
-                        HandlePropertyChange(ev.Value);
-                        break;
-                    case MpvEventId.EndFile:
-                        if (ev.Value.Error < 0)
-                        {
-                            var msg = GetError(ev.Value.Error);
-                            _dispatcher.Post(() => ErrorOccurred?.Invoke($"播放失败: {msg}"));
-                        }
-                        break;
-                }
-            }
+                    State = PlaybackState.Loading,
+                    IsPaused = true,
+                });
+                break;
+            case MpvEventId.FileLoaded:
+                HandleFileLoaded(mpv);
+                break;
+            case MpvEventId.PropertyChange:
+                HandlePropertyChange(ev);
+                break;
+            case MpvEventId.EndFile:
+                HandleEndFile(ev);
+                break;
         }
+    }
+
+    private void HandleFileLoaded(MpvContext mpv)
+    {
+        string? fileName = null;
+        var paused = true;
+        TryMpv(() =>
+        {
+            fileName = mpv.GetPropertyString("filename");
+            UpdateHardwareDecode(mpv.GetPropertyString("hwdec-current"));
+            paused = mpv.GetPropertyFlag("pause");
+        }, "读取文件信息失败");
+
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            FilePath = fileName,
+            State = paused ? PlaybackState.Paused : PlaybackState.Playing,
+            IsPaused = paused,
+            Position = 0,
+            Duration = 0,
+        });
+        Publish(() => FileLoaded?.Invoke(fileName));
     }
 
     private unsafe void HandlePropertyChange(MpvEvent ev)
     {
         if (ev.Data == IntPtr.Zero)
             return;
-
         ref readonly var prop = ref *(MpvEventProperty*)ev.Data;
 
         switch (ev.ReplyUserdata)
         {
             case ReplyTimePos when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
-            {
-                var val = *(double*)prop.Data;
-                _dispatcher.Post(() => PositionChanged?.Invoke(val));
+                var position = *(double*)prop.Data;
+                UpdatePositionSnapshot(position);
                 break;
-            }
             case ReplyDuration when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
-            {
-                var val = *(double*)prop.Data;
-                _dispatcher.Post(() => DurationChanged?.Invoke(val));
-                break;
-            }
+                var duration = *(double*)prop.Data;
+                UpdateSnapshot(snapshot => snapshot with { Duration = duration }); break;
             case ReplyPause when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
-            {
-                var val = *(int*)prop.Data != 0;
-                _dispatcher.Post(() => PauseChanged?.Invoke(val));
-                break;
-            }
+                HandlePause(*(int*)prop.Data != 0); break;
             case ReplyVolume when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
-            {
-                var val = *(double*)prop.Data;
-                _dispatcher.Post(() => VolumeChanged?.Invoke(val));
-                break;
-            }
+                var volume = *(double*)prop.Data;
+                UpdateSnapshot(snapshot => snapshot with { Volume = volume }); break;
             case ReplyEofReached when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
-            {
-                var val = *(int*)prop.Data != 0;
-                _dispatcher.Post(() => EofReached?.Invoke(val));
+                var eof = *(int*)prop.Data != 0;
+                if (eof)
+                    UpdateSnapshot(snapshot => snapshot with { State = PlaybackState.Ended, IsPaused = true });
                 break;
-            }
             case ReplyMute when prop.Format == MpvFormat.Flag && prop.Data != IntPtr.Zero:
-            {
-                var val = *(int*)prop.Data != 0;
-                _dispatcher.Post(() => MuteChanged?.Invoke(val));
-                break;
-            }
+                var mute = *(int*)prop.Data != 0;
+                UpdateSnapshot(snapshot => snapshot with { IsMuted = mute }); break;
+            case ReplySpeed when prop.Format == MpvFormat.Double && prop.Data != IntPtr.Zero:
+                UpdateSpeed(*(double*)prop.Data); break;
+            case ReplyHwDec when prop.Format == MpvFormat.String && prop.Data != IntPtr.Zero:
+                UpdateHardwareDecode(Marshal.PtrToStringUTF8(*(IntPtr*)prop.Data)); break;
         }
     }
 
-    public void LoadFile(string path) =>
-        TryMpv(() => RequireMpv().Command("loadfile", path), "加载文件失败");
-
-    public void Play() =>
-        TryMpv(() => RequireMpv().SetProperty("pause", "no"), "播放失败");
-
-    public void Pause() =>
-        TryMpv(() => RequireMpv().SetProperty("pause", "yes"), "暂停失败");
-
-    public void TogglePause() =>
-        TryMpv(() =>
+    private void HandlePause(bool paused)
+    {
+        UpdateSnapshot(snapshot => snapshot with
         {
-            var mpv = RequireMpv();
-            var paused = mpv.GetPropertyFlag("pause");
-            mpv.SetProperty("pause", paused ? "no" : "yes");
-        }, "切换播放/暂停失败");
+            IsPaused = paused,
+            State = snapshot.State is PlaybackState.Loading or PlaybackState.Ended or PlaybackState.Unloaded
+                ? snapshot.State
+                : paused ? PlaybackState.Paused : PlaybackState.Playing,
+        });
+    }
+
+    private void HandleEndFile(MpvEvent ev)
+    {
+        var error = ev.Error;
+        if (ev.Data != IntPtr.Zero)
+        {
+            var end = Marshal.PtrToStructure<MpvEventEndFile>(ev.Data);
+            error = end.Error;
+            if (end.Reason == MpvEndFileReason.Eof)
+            {
+                UpdateSnapshot(snapshot => snapshot with
+                {
+                    State = PlaybackState.Ended,
+                    IsPaused = true,
+                });
+                return;
+            }
+        }
+
+        if (error < 0)
+        {
+            UpdateSnapshot(snapshot => snapshot with
+            {
+                State = PlaybackState.Error,
+                IsPaused = true,
+            });
+            Publish(() => ErrorOccurred?.Invoke($"播放失败: {GetError(error)}"));
+        }
+    }
+
+    public void LoadFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            UpdateSnapshot(snapshot => snapshot with
+            {
+                State = PlaybackState.Error,
+                IsPaused = true,
+            });
+            Publish(() => ErrorOccurred?.Invoke($"文件不存在: {fullPath}"));
+            return;
+        }
+
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            FilePath = fullPath,
+            State = PlaybackState.Loading,
+            Position = 0,
+            Duration = 0,
+            IsPaused = true,
+        });
+        TryMpv(() => RequireMpv().Command("loadfile", fullPath, "replace"), "加载文件失败");
+    }
+
+    public void Play() => TryMpv(() =>
+    {
+        RequireMpv().SetProperty("pause", "no");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = PlaybackState.Playing,
+            IsPaused = false,
+        });
+    }, "播放失败");
+
+    public void Pause() => TryMpv(() =>
+    {
+        RequireMpv().SetProperty("pause", "yes");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = PlaybackState.Paused,
+            IsPaused = true,
+        });
+    }, "暂停失败");
+
+    public void TogglePause() => TryMpv(() =>
+    {
+        var mpv = RequireMpv();
+        var paused = !mpv.GetPropertyFlag("pause");
+        mpv.SetProperty("pause", paused ? "yes" : "no");
+        UpdateSnapshot(snapshot => snapshot with
+        {
+            State = paused ? PlaybackState.Paused : PlaybackState.Playing,
+            IsPaused = paused,
+        });
+    }, "切换播放/暂停失败");
 
     public void Seek(double positionSeconds) =>
-        TryMpv(() => RequireMpv().Command("seek", positionSeconds.ToString("F2", CultureInfo.InvariantCulture), "absolute", "exact"), "跳转失败");
+        TryMpv(() => RequireMpv().Command("seek", FormatNumber(positionSeconds), "absolute", "exact"), "跳转失败");
 
     public void SeekFast(double positionSeconds) =>
-        TryMpv(() => RequireMpv().Command("seek", positionSeconds.ToString("F2", CultureInfo.InvariantCulture), "absolute+keyframes"), "跳转失败");
+        TryMpv(() => RequireMpv().Command("seek", FormatNumber(positionSeconds), "absolute+keyframes"), "跳转失败");
 
     public void SeekRelative(double offsetSeconds) =>
-        TryMpv(() => RequireMpv().Command("seek", offsetSeconds.ToString("F2", CultureInfo.InvariantCulture), "relative"), "跳转失败");
+        TryMpv(() => RequireMpv().Command("seek", FormatNumber(offsetSeconds), "relative"), "跳转失败");
 
-    public void SetVolume(double volume) =>
-        TryMpv(() => RequireMpv().SetProperty("volume", Math.Clamp(volume, 0, 100).ToString("F0", CultureInfo.InvariantCulture)), "设置音量失败");
+    public void SetVolume(double volume)
+    {
+        var normalized = Math.Clamp(volume, 0, 130);
+        TryMpv(() =>
+        {
+            RequireMpv().SetProperty("volume", normalized.ToString("F0", CultureInfo.InvariantCulture));
+            UpdateSnapshot(snapshot => snapshot with { Volume = normalized });
+        }, "设置音量失败");
+    }
 
-    public void SetMute(bool mute) =>
-        TryMpv(() => RequireMpv().SetProperty("mute", mute ? "yes" : "no"), "设置静音失败");
+    public void SetMute(bool mute) => TryMpv(() =>
+    {
+        RequireMpv().SetProperty("mute", mute ? "yes" : "no");
+        UpdateSnapshot(snapshot => snapshot with { IsMuted = mute });
+    }, "设置静音失败");
 
-    public void ToggleMute() =>
+    public void ToggleMute() => TryMpv(() =>
+    {
+        var mpv = RequireMpv();
+        var mute = !mpv.GetPropertyFlag("mute");
+        mpv.SetProperty("mute", mute ? "yes" : "no");
+        UpdateSnapshot(snapshot => snapshot with { IsMuted = mute });
+    }, "切换静音失败");
+
+    public void SetSpeed(double speed)
+    {
+        var normalized = NormalizeSpeed(speed);
+        TryMpv(() =>
+        {
+            RequireMpv().SetProperty("speed", normalized.ToString(CultureInfo.InvariantCulture));
+            UpdateSnapshot(snapshot => snapshot with { Speed = normalized });
+        }, "设置播放速度失败");
+    }
+
+    public void Screenshot(string? path = null)
+    {
         TryMpv(() =>
         {
             var mpv = RequireMpv();
-            var muted = mpv.GetPropertyFlag("mute");
-            mpv.SetProperty("mute", muted ? "no" : "yes");
-        }, "切换静音失败");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                mpv.Command("screenshot", "subtitles");
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+            mpv.Command("screenshot-to-file", Path.GetFullPath(path), "subtitles");
+        }, "截图失败");
+    }
 
     public VideoInfo? GetVideoInfo()
     {
         MpvContext? mpv;
-        lock (_stateLock)
-            mpv = _mpv;
-
+        lock (_stateLock) mpv = _coreSession?.Context;
         if (mpv == null || !mpv.IsInitialized)
             return null;
 
         try
         {
             return new VideoInfo(
-                FileName: mpv.GetPropertyString("filename"),
-                FileFormat: mpv.GetPropertyString("file-format"),
-                FileSize: TryGetLong(mpv, "file-size"),
-                VideoWidth: TryGetLong(mpv, "video-params/dw") ?? TryGetLong(mpv, "width"),
-                VideoHeight: TryGetLong(mpv, "video-params/dh") ?? TryGetLong(mpv, "height"),
-                VideoCodec: mpv.GetPropertyString("video-codec"),
-                HwDecCurrent: mpv.GetPropertyString("hwdec-current"),
-                VideoFps: TryGetDouble(mpv, "estimated-vf-fps") ?? TryGetDouble(mpv, "container-fps"),
-                VideoBitrate: TryGetDouble(mpv, "video-bitrate"),
-                PixelFormat: mpv.GetPropertyString("video-params/pixelformat"),
-                AudioCodec: mpv.GetPropertyString("audio-codec-name"),
-                AudioSampleRate: TryGetLong(mpv, "audio-params/samplerate"),
-                AudioChannels: TryGetLong(mpv, "audio-params/channel-count"),
-                AudioBitrate: TryGetDouble(mpv, "audio-bitrate")
-            );
+                mpv.GetPropertyString("filename"), mpv.GetPropertyString("file-format"), TryGetLong(mpv, "file-size"),
+                TryGetLong(mpv, "video-params/dw") ?? TryGetLong(mpv, "width"), TryGetLong(mpv, "video-params/dh") ?? TryGetLong(mpv, "height"),
+                mpv.GetPropertyString("video-codec"), mpv.GetPropertyString("hwdec-current"),
+                TryGetDouble(mpv, "estimated-vf-fps") ?? TryGetDouble(mpv, "container-fps"), TryGetDouble(mpv, "video-bitrate"),
+                mpv.GetPropertyString("video-params/pixelformat"), mpv.GetPropertyString("audio-codec-name"),
+                TryGetLong(mpv, "audio-params/samplerate"), TryGetLong(mpv, "audio-params/channel-count"), TryGetDouble(mpv, "audio-bitrate"),
+                RenderBackend);
         }
         catch (Exception ex)
         {
@@ -307,33 +428,76 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable, IAsyncDisposable
         }
     }
 
-    private static long? TryGetLong(MpvContext mpv, string name)
+    private void UpdateSpeed(double speed)
     {
-        return mpv.TryGetPropertyLong(name, out long val) ? val : null;
+        UpdateSnapshot(snapshot => snapshot with { Speed = speed });
     }
 
-    private static double? TryGetDouble(MpvContext mpv, string name)
+    private void UpdateHardwareDecode(string? value)
     {
-        return mpv.TryGetPropertyDouble(name, out double val) ? val : null;
+        UpdateSnapshot(snapshot => snapshot with { HardwareDecode = value });
     }
+
+    private void UpdatePositionSnapshot(double position)
+    {
+        PlaybackSnapshot snapshot;
+        lock (_stateLock)
+        {
+            _snapshot = _snapshot with
+            {
+                Position = position,
+                Revision = _snapshot.Revision + 1,
+            };
+
+            var now = DateTime.UtcNow;
+            if (_lastPositionNotificationUtc != DateTime.MinValue &&
+                now - _lastPositionNotificationUtc < PositionNotificationInterval)
+                return;
+
+            _lastPositionNotificationUtc = now;
+            snapshot = _snapshot;
+        }
+
+        Publish(() => SnapshotChanged?.Invoke(snapshot));
+    }
+
+    private void UpdateSnapshot(Func<PlaybackSnapshot, PlaybackSnapshot> update)
+    {
+        PlaybackSnapshot snapshot;
+        lock (_stateLock)
+        {
+            var nextSnapshot = update(_snapshot);
+            _snapshot = nextSnapshot with { Revision = _snapshot.Revision + 1 };
+            snapshot = _snapshot;
+        }
+
+        Publish(() => SnapshotChanged?.Invoke(snapshot));
+    }
+
+    private void PublishWarning(string message) => Publish(() => WarningOccurred?.Invoke(message));
+    private void Publish(Action action) => _dispatcher.Post(action);
 
     private void TryMpv(Action action, string context)
     {
-        try
-        {
-            action();
-        }
+        try { action(); }
         catch (MpvException ex)
         {
-            _dispatcher.Post(() => ErrorOccurred?.Invoke($"{context}: {ex.Message}"));
+            UpdateSnapshot(snapshot => snapshot with
+            {
+                State = PlaybackState.Error,
+                IsPaused = true,
+            });
+            Publish(() => ErrorOccurred?.Invoke($"{context}: {ex.Message}"));
         }
-        catch (ObjectDisposedException)
-        {
-            // 关闭过程中出现的调用直接忽略，避免多余报错。
-        }
+        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _dispatcher.Post(() => ErrorOccurred?.Invoke($"{context}: {ex.Message}"));
+            UpdateSnapshot(snapshot => snapshot with
+            {
+                State = PlaybackState.Error,
+                IsPaused = true,
+            });
+            Publish(() => ErrorOccurred?.Invoke($"{context}: {ex.Message}"));
         }
     }
 
@@ -341,54 +505,52 @@ public sealed class MpvPlayerService : IMpvPlayer, IDisposable, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
-            return _mpv ?? throw new InvalidOperationException("播放器尚未初始化。");
+            return _coreSession?.Context ?? throw new InvalidOperationException("播放器尚未初始化。");
     }
 
-    public void Dispose()
+    private static string ToMpvHardwareDecode(HardwareDecodeMode mode) => mode switch
     {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
+        HardwareDecodeMode.Disabled => "no",
+        HardwareDecodeMode.D3D11va => "d3d11va",
+        HardwareDecodeMode.D3D11vaCopy => "d3d11va-copy",
+        HardwareDecodeMode.Nvdec => "nvdec",
+        HardwareDecodeMode.NvdecCopy => "nvdec-copy",
+        HardwareDecodeMode.Vulkan => "vulkan",
+        HardwareDecodeMode.VulkanCopy => "vulkan-copy",
+        HardwareDecodeMode.Dxva2 => "dxva2",
+        HardwareDecodeMode.Dxva2Copy => "dxva2-copy",
+        _ => "auto",
+    };
+
+    private static double NormalizeSpeed(double value) => double.IsFinite(value) ? Math.Clamp(value, 0.1, 4.0) : 1.0;
+    private static string FormatNumber(double value) => value.ToString("F2", CultureInfo.InvariantCulture);
+    private static long? TryGetLong(MpvContext mpv, string name) => mpv.TryGetPropertyLong(name, out var value) ? value : null;
+    private static double? TryGetDouble(MpvContext mpv, string name) => mpv.TryGetPropertyDouble(name, out var value) ? value : null;
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     public async ValueTask DisposeAsync()
     {
-        CancellationTokenSource? cts;
-        Task? eventLoopTask;
-        MpvContext? mpv;
-
+        MpvCoreSession? session;
         lock (_stateLock)
         {
-            if (_disposed)
-                return;
-
+            if (_disposed) return;
             _disposed = true;
-
-            cts = _cts;
-            eventLoopTask = _eventLoopTask;
-            mpv = _mpv;
-
-            _cts = null;
-            _eventLoopTask = null;
-            _mpv = null;
+            session = _coreSession;
+            _coreSession = null;
         }
 
-        cts?.Cancel();
-        mpv?.WakeupSignal.Set();
+        if (session != null)
+            await session.DisposeAsync().ConfigureAwait(false);
+    }
 
-        try
-        {
-            if (eventLoopTask != null)
-                await eventLoopTask.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // 取消事件线程时的异常属于预期行为。
-        }
-        catch (ObjectDisposedException)
-        {
-            // 关闭过程中等待句柄被释放也属于可接受路径。
-        }
-
-        mpv?.Dispose();
-        cts?.Dispose();
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MpvEventEndFile
+    {
+        public MpvEndFileReason Reason;
+        public int Error;
+        public long PlaylistEntryId;
+        public long PlaylistInsertId;
+        public int PlaylistInsertNumEntries;
     }
 }

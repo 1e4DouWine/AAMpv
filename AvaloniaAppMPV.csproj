@@ -11,6 +11,13 @@
 
     <ItemGroup>
         <AvaloniaResource Include="Assets\**"/>
+        <!-- Third_party_MPV_project contains reference repositories, not source for this app. -->
+        <Compile Remove="Third_party_MPV_project\**" />
+        <EmbeddedResource Remove="Third_party_MPV_project\**" />
+        <None Remove="Third_party_MPV_project\**" />
+        <Compile Remove="Tests\**" />
+        <EmbeddedResource Remove="Tests\**" />
+        <None Remove="Tests\**" />
     </ItemGroup>
 
     <ItemGroup>
